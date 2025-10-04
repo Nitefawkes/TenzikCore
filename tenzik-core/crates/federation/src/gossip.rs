@@ -9,9 +9,10 @@ use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::time::Duration;
 use tokio::time::{interval, Instant};
-use tracing::{debug, info, warn, error};
+use tracing::{debug, error, info, warn};
 
-use crate::storage::{Event, EventDAG};
+use crate::storage::EventDAG;
+use tenzik_protocol::Event;
 
 /// Information about a peer for gossip
 #[derive(Debug, Clone)]
@@ -86,11 +87,11 @@ pub struct GossipConfig {
 impl Default for GossipConfig {
     fn default() -> Self {
         Self {
-            sync_interval_ms: 5000,     // 5 seconds
-            max_events_per_sync: 100,   // 100 events
-            peer_timeout_ms: 30000,     // 30 seconds
-            max_concurrent_syncs: 5,    // 5 concurrent syncs
-            ping_interval_ms: 10000,    // 10 seconds
+            sync_interval_ms: 5000,   // 5 seconds
+            max_events_per_sync: 100, // 100 events
+            peer_timeout_ms: 30000,   // 30 seconds
+            max_concurrent_syncs: 5,  // 5 concurrent syncs
+            ping_interval_ms: 10000,  // 10 seconds
         }
     }
 }
@@ -139,7 +140,7 @@ impl GossipProtocol {
             active_syncs: HashSet::new(),
         }
     }
-    
+
     /// Add a peer to the gossip network
     pub fn add_peer(&mut self, address: SocketAddr, public_key: String) {
         let peer_info = PeerInfo {
@@ -150,26 +151,26 @@ impl GossipProtocol {
             events_received: 0,
             is_reachable: true,
         };
-        
+
         self.peers.insert(address, peer_info);
         info!("Added peer to gossip network: {}", address);
     }
-    
+
     /// Remove a peer from the gossip network
     pub fn remove_peer(&mut self, address: &SocketAddr) {
         self.peers.remove(address);
         self.active_syncs.remove(address);
         info!("Removed peer from gossip network: {}", address);
     }
-    
+
     /// Start the gossip protocol (background task)
     pub async fn start(&mut self) -> Result<()> {
         info!("Starting gossip protocol");
-        
+
         // Create sync interval
         let mut sync_interval = interval(Duration::from_millis(self.config.sync_interval_ms));
         let mut ping_interval = interval(Duration::from_millis(self.config.ping_interval_ms));
-        
+
         loop {
             tokio::select! {
                 _ = sync_interval.tick() => {
@@ -182,25 +183,26 @@ impl GossipProtocol {
             }
         }
     }
-    
+
     /// Sync with all available peers
     async fn sync_with_peers(&mut self) {
         debug!("Starting sync round with {} peers", self.peers.len());
-        
+
         // Collect peers that need syncing
-        let peers_to_sync: Vec<SocketAddr> = self.peers
+        let peers_to_sync: Vec<SocketAddr> = self
+            .peers
             .iter()
             .filter(|(addr, peer)| {
                 // Skip if already syncing
                 if self.active_syncs.contains(addr) {
                     return false;
                 }
-                
+
                 // Skip unreachable peers
                 if !peer.is_reachable {
                     return false;
                 }
-                
+
                 // Sync if never synced or last sync was long ago
                 peer.last_sync.map_or(true, |last| {
                     last.elapsed() > Duration::from_millis(self.config.sync_interval_ms)
@@ -209,13 +211,13 @@ impl GossipProtocol {
             .map(|(addr, _)| *addr)
             .take(self.config.max_concurrent_syncs)
             .collect();
-        
+
         // Start sync with selected peers
         for peer_addr in peers_to_sync {
             self.active_syncs.insert(peer_addr);
             let result = self.sync_with_peer(peer_addr).await;
             self.active_syncs.remove(&peer_addr);
-            
+
             match result {
                 Ok(_) => {
                     self.stats.sync_successes += 1;
@@ -233,16 +235,16 @@ impl GossipProtocol {
                 }
             }
         }
-        
+
         self.stats.sync_attempts += self.active_syncs.len() as u64;
     }
-    
+
     /// Sync with a specific peer
     async fn sync_with_peer(&mut self, peer_addr: SocketAddr) -> Result<()> {
         debug!("Syncing with peer: {}", peer_addr);
-        
+
         let start_time = Instant::now();
-        
+
         // Get events to send (simplified: send latest events)
         let events = self.dag.get_events_since(None)?;
         let events_to_send: Vec<Event> = events
@@ -250,41 +252,45 @@ impl GossipProtocol {
             .rev() // Latest first
             .take(self.config.max_events_per_sync)
             .collect();
-        
+
         if !events_to_send.is_empty() {
             // TODO: Send events to peer via network
             // For now, just simulate sending
-            debug!("Sending {} events to peer {}", events_to_send.len(), peer_addr);
-            
+            debug!(
+                "Sending {} events to peer {}",
+                events_to_send.len(),
+                peer_addr
+            );
+
             // Update statistics
             self.stats.events_sent += events_to_send.len() as u64;
             if let Some(peer) = self.peers.get_mut(&peer_addr) {
                 peer.events_sent += events_to_send.len() as u64;
             }
         }
-        
+
         // TODO: Request events from peer
         // TODO: Handle peer's response
-        
+
         // Update latency statistics
         let latency = start_time.elapsed().as_millis() as f64;
-        self.stats.avg_sync_latency_ms = 
-            (self.stats.avg_sync_latency_ms * self.stats.sync_successes as f64 + latency) 
-            / (self.stats.sync_successes + 1) as f64;
-        
+        self.stats.avg_sync_latency_ms =
+            (self.stats.avg_sync_latency_ms * self.stats.sync_successes as f64 + latency)
+                / (self.stats.sync_successes + 1) as f64;
+
         debug!("Sync completed with peer {} in {:.2}ms", peer_addr, latency);
         Ok(())
     }
-    
+
     /// Send ping to all peers
     async fn ping_peers(&mut self) {
         debug!("Pinging {} peers", self.peers.len());
-        
+
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis() as u64;
-        
+
         for (peer_addr, peer) in &mut self.peers {
             if peer.is_reachable {
                 // TODO: Send ping message via network
@@ -292,9 +298,13 @@ impl GossipProtocol {
             }
         }
     }
-    
+
     /// Handle incoming gossip message
-    pub async fn handle_message(&mut self, from: SocketAddr, message: GossipMessage) -> Result<Option<GossipMessage>> {
+    pub async fn handle_message(
+        &mut self,
+        from: SocketAddr,
+        message: GossipMessage,
+    ) -> Result<Option<GossipMessage>> {
         match message {
             GossipMessage::Sync { since, limit } => {
                 self.handle_sync_request(from, since, limit).await
@@ -302,43 +312,53 @@ impl GossipProtocol {
             GossipMessage::Events { events, has_more } => {
                 self.handle_events(from, events, has_more).await
             }
-            GossipMessage::Ack { count, rejected } => {
-                self.handle_ack(from, count, rejected).await
-            }
-            GossipMessage::Ping { timestamp } => {
-                self.handle_ping(from, timestamp).await
-            }
-            GossipMessage::Pong { ping_timestamp, pong_timestamp } => {
-                self.handle_pong(from, ping_timestamp, pong_timestamp).await
-            }
+            GossipMessage::Ack { count, rejected } => self.handle_ack(from, count, rejected).await,
+            GossipMessage::Ping { timestamp } => self.handle_ping(from, timestamp).await,
+            GossipMessage::Pong {
+                ping_timestamp,
+                pong_timestamp,
+            } => self.handle_pong(from, ping_timestamp, pong_timestamp).await,
         }
     }
-    
+
     /// Handle sync request from peer
-    async fn handle_sync_request(&mut self, from: SocketAddr, since: Option<String>, limit: usize) -> Result<Option<GossipMessage>> {
-        debug!("Handling sync request from {}, since: {:?}, limit: {}", from, since, limit);
-        
+    async fn handle_sync_request(
+        &mut self,
+        from: SocketAddr,
+        since: Option<String>,
+        limit: usize,
+    ) -> Result<Option<GossipMessage>> {
+        debug!(
+            "Handling sync request from {}, since: {:?}, limit: {}",
+            from, since, limit
+        );
+
         let events = self.dag.get_events_since(since.as_deref())?;
         let events_to_send: Vec<Event> = events
             .into_iter()
             .take(limit.min(self.config.max_events_per_sync))
             .collect();
-        
+
         let has_more = events_to_send.len() >= limit;
-        
+
         Ok(Some(GossipMessage::Events {
             events: events_to_send,
             has_more,
         }))
     }
-    
+
     /// Handle events from peer
-    async fn handle_events(&mut self, from: SocketAddr, events: Vec<Event>, _has_more: bool) -> Result<Option<GossipMessage>> {
+    async fn handle_events(
+        &mut self,
+        from: SocketAddr,
+        events: Vec<Event>,
+        _has_more: bool,
+    ) -> Result<Option<GossipMessage>> {
         debug!("Handling {} events from {}", events.len(), from);
-        
+
         let mut accepted = 0;
         let mut rejected = Vec::new();
-        
+
         for event in events {
             match self.dag.add_event(event.clone()) {
                 Ok(_) => {
@@ -352,73 +372,97 @@ impl GossipProtocol {
                 }
             }
         }
-        
+
         // Update peer statistics
         if let Some(peer) = self.peers.get_mut(&from) {
             peer.events_received += accepted;
         }
-        
-        debug!("Accepted {} events, rejected {} from {}", accepted, rejected.len(), from);
-        
+
+        debug!(
+            "Accepted {} events, rejected {} from {}",
+            accepted,
+            rejected.len(),
+            from
+        );
+
         Ok(Some(GossipMessage::Ack {
             count: accepted as usize,
             rejected,
         }))
     }
-    
+
     /// Handle acknowledgment from peer
-    async fn handle_ack(&mut self, from: SocketAddr, count: usize, rejected: Vec<String>) -> Result<Option<GossipMessage>> {
-        debug!("Received ack from {}: {} accepted, {} rejected", from, count, rejected.len());
-        
+    async fn handle_ack(
+        &mut self,
+        from: SocketAddr,
+        count: usize,
+        rejected: Vec<String>,
+    ) -> Result<Option<GossipMessage>> {
+        debug!(
+            "Received ack from {}: {} accepted, {} rejected",
+            from,
+            count,
+            rejected.len()
+        );
+
         // TODO: Update internal state based on ack
         // TODO: Handle rejected events (maybe retry or log)
-        
+
         Ok(None)
     }
-    
+
     /// Handle ping from peer
-    async fn handle_ping(&mut self, from: SocketAddr, timestamp: u64) -> Result<Option<GossipMessage>> {
+    async fn handle_ping(
+        &mut self,
+        from: SocketAddr,
+        timestamp: u64,
+    ) -> Result<Option<GossipMessage>> {
         debug!("Received ping from {}", from);
-        
+
         let pong_timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis() as u64;
-        
+
         Ok(Some(GossipMessage::Pong {
             ping_timestamp: timestamp,
             pong_timestamp,
         }))
     }
-    
+
     /// Handle pong from peer
-    async fn handle_pong(&mut self, from: SocketAddr, ping_timestamp: u64, pong_timestamp: u64) -> Result<Option<GossipMessage>> {
+    async fn handle_pong(
+        &mut self,
+        from: SocketAddr,
+        ping_timestamp: u64,
+        pong_timestamp: u64,
+    ) -> Result<Option<GossipMessage>> {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis() as u64;
-        
+
         let rtt = now.saturating_sub(ping_timestamp);
         debug!("Received pong from {}, RTT: {}ms", from, rtt);
-        
+
         // Mark peer as reachable
         if let Some(peer) = self.peers.get_mut(&from) {
             peer.is_reachable = true;
         }
-        
+
         Ok(None)
     }
-    
+
     /// Get gossip statistics
     pub fn get_stats(&self) -> &GossipStats {
         &self.stats
     }
-    
+
     /// Get peer information
     pub fn get_peers(&self) -> &HashMap<SocketAddr, PeerInfo> {
         &self.peers
     }
-    
+
     /// Get number of reachable peers
     pub fn reachable_peer_count(&self) -> usize {
         self.peers.values().filter(|p| p.is_reachable).count()
@@ -428,43 +472,43 @@ impl GossipProtocol {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use crate::storage::EventDAG;
-    
+    use tempfile::TempDir;
+
     #[test]
     fn test_gossip_config_default() {
         let config = GossipConfig::default();
         assert_eq!(config.sync_interval_ms, 5000);
         assert_eq!(config.max_events_per_sync, 100);
     }
-    
+
     #[test]
     fn test_peer_management() {
         let temp_dir = TempDir::new().unwrap();
         let dag = EventDAG::new(temp_dir.path()).unwrap();
         let mut gossip = GossipProtocol::new(GossipConfig::default(), dag);
-        
+
         let peer_addr = "127.0.0.1:9001".parse().unwrap();
         let public_key = "test_key".to_string();
-        
+
         gossip.add_peer(peer_addr, public_key.clone());
         assert_eq!(gossip.peers.len(), 1);
         assert_eq!(gossip.reachable_peer_count(), 1);
-        
+
         gossip.remove_peer(&peer_addr);
         assert_eq!(gossip.peers.len(), 0);
         assert_eq!(gossip.reachable_peer_count(), 0);
     }
-    
+
     #[tokio::test]
     async fn test_ping_pong() {
         let temp_dir = TempDir::new().unwrap();
         let dag = EventDAG::new(temp_dir.path()).unwrap();
         let mut gossip = GossipProtocol::new(GossipConfig::default(), dag);
-        
+
         let peer_addr = "127.0.0.1:9001".parse().unwrap();
         let timestamp = 12345;
-        
+
         // Handle ping
         let response = gossip.handle_ping(peer_addr, timestamp).await.unwrap();
         match response {

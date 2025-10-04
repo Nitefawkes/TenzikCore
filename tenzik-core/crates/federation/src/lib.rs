@@ -3,14 +3,15 @@
 //! This crate implements a minimal federated event system using a DAG structure
 //! for receipt exchange between Tenzik nodes.
 
-pub mod storage;
-pub mod node;
 pub mod gossip;
+pub mod node;
+pub mod storage;
 
 // Re-export key types
-pub use storage::{Event, EventDAG, EventType, EventContent, NodeInfo, StorageError, DAGStats};
-pub use node::{TenzikNode, NodeConfig};
 pub use gossip::{GossipProtocol, PeerInfo};
+pub use node::{NodeConfig, TenzikNode};
+pub use storage::{EventDAG, StorageError};
+pub use tenzik_protocol::{DAGStats, Event, EventContent, EventType, NodeInfo};
 
 #[cfg(test)]
 mod tests {

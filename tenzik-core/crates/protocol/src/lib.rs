@@ -1,20 +1,18 @@
 //! Tenzik protocol types and DAG federation
 //!
 //! This crate defines the core protocol types for Tenzik federation,
-//! including ExecutionReceipts, Events, and DAG structures.
+//! including execution receipts, events, and DAG structures shared across
+//! the runtime and federation components.
 
+pub mod dag;
 pub mod errors;
+pub mod events;
 
 // Simple re-exports for now
+pub use dag::DAGStats;
 pub use errors::ProtocolError;
-
-// Type aliases for federation types (defined in federation crate)
-pub type ExecutionReceipt = String; // Placeholder
-pub type ExecMetrics = String; // Placeholder
-pub type Event = String; // Placeholder
-pub type EventType = String; // Placeholder
-pub type EventDAG = String; // Placeholder
-pub type NodeInfo = String; // Placeholder
+pub use events::{Event, EventContent, EventType, NodeInfo};
+pub use tenzik_runtime::{ExecMetrics, ExecutionReceipt};
 
 /// Result type for protocol operations
 pub type Result<T> = std::result::Result<T, ProtocolError>;

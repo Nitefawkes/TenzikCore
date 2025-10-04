@@ -5,12 +5,13 @@
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::net::SocketAddr;
 use std::collections::HashMap;
+use std::net::SocketAddr;
 use tokio::net::TcpListener;
-use tracing::{info, warn, error};
+use tracing::{error, info, warn};
 
-use crate::storage::{EventDAG, NodeInfo, Event, EventContent, EventType};
+use crate::storage::EventDAG;
+use tenzik_protocol::{Event, EventContent, EventType, NodeInfo};
 
 /// Configuration for a Tenzik node
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -76,10 +77,10 @@ impl TenzikNode {
             use rand::rngs::OsRng;
             ed25519_dalek::SigningKey::generate(&mut OsRng)
         });
-        
+
         // Open local DAG storage
         let dag = EventDAG::new(&config.db_path)?;
-        
+
         Ok(TenzikNode {
             config,
             dag,
@@ -89,31 +90,31 @@ impl TenzikNode {
             start_time: chrono::Utc::now(),
         })
     }
-    
+
     /// Start the node (bind to listen address)
     pub async fn start(&mut self) -> Result<()> {
         info!("Starting Tenzik node on {}", self.config.listen_addr);
-        
+
         // Bind to listen address
         let listener = TcpListener::bind(self.config.listen_addr).await?;
         info!("Node listening on {}", self.config.listen_addr);
-        
+
         // Announce ourselves to the network
         self.announce_self().await?;
-        
+
         // Connect to initial peers
         for peer_addr in &self.config.initial_peers {
             if let Err(e) = self.connect_to_peer(*peer_addr).await {
                 warn!("Failed to connect to initial peer {}: {}", peer_addr, e);
             }
         }
-        
+
         // TODO: Accept incoming connections
         // TODO: Start gossip protocol
-        
+
         Ok(())
     }
-    
+
     /// Announce this node to the network
     async fn announce_self(&mut self) -> Result<()> {
         let node_info = NodeInfo {
@@ -122,11 +123,11 @@ impl TenzikNode {
             name: self.config.name.clone(),
             version: env!("CARGO_PKG_VERSION").to_string(),
         };
-        
+
         // Get current tips as parents for this announcement
         let tips = self.dag.get_tips()?;
         let parents: Vec<String> = tips.into_iter().map(|e| e.id).collect();
-        
+
         let event = Event::new_node_announce(
             node_info,
             vec!["receipt".to_string(), "federation".to_string()], // capabilities
@@ -135,21 +136,21 @@ impl TenzikNode {
             hex::encode(self.signing_key.verifying_key().as_bytes()),
             &self.signing_key,
         )?;
-        
+
         self.sequence += 1;
         self.dag.add_event(event)?;
-        
+
         info!("Announced node to network");
         Ok(())
     }
-    
+
     /// Connect to a peer
     async fn connect_to_peer(&mut self, peer_addr: SocketAddr) -> Result<()> {
         info!("Connecting to peer: {}", peer_addr);
-        
+
         // TODO: Implement actual TCP connection and handshake
         // For now, just simulate a successful connection
-        
+
         let peer_info = ConnectedPeer {
             address: peer_addr,
             node_info: NodeInfo {
@@ -161,55 +162,55 @@ impl TenzikNode {
             connected_at: chrono::Utc::now(),
             last_seen: chrono::Utc::now(),
         };
-        
+
         self.peers.insert(peer_addr, peer_info);
         info!("Connected to peer: {}", peer_addr);
-        
+
         Ok(())
     }
-    
+
     /// Get connected peers
     pub fn get_connected_peers(&self) -> Vec<&ConnectedPeer> {
         self.peers.values().collect()
     }
-    
+
     /// Get node's public key
     pub fn public_key(&self) -> ed25519_dalek::VerifyingKey {
         self.signing_key.verifying_key()
     }
-    
+
     /// Get node's address
     pub fn listen_address(&self) -> SocketAddr {
         self.config.listen_addr
     }
-    
+
     /// Get DAG statistics
     pub fn get_dag_stats(&self) -> Result<crate::storage::DAGStats> {
         self.dag.get_stats()
     }
-    
+
     /// Add an event to the local DAG (e.g., from execution)
     pub fn add_event(&mut self, event: Event) -> Result<()> {
         self.dag.add_event(event)?;
         // TODO: Trigger gossip to peers
         Ok(())
     }
-    
+
     /// Shutdown the node gracefully
     pub async fn shutdown(&mut self) -> Result<()> {
         info!("Shutting down Tenzik node");
-        
+
         // Send leave announcement
         let tips = self.dag.get_tips()?;
         let parents: Vec<String> = tips.into_iter().map(|e| e.id).collect();
-        
+
         // Create node leave event directly
         let content = EventContent::NodeLeave {
             reason: "Graceful shutdown".to_string(),
         };
         let timestamp = chrono::Utc::now().to_rfc3339();
         let node_id = hex::encode(self.signing_key.verifying_key().as_bytes());
-        
+
         let leave_event = Event::new_event(
             EventType::NodeLeave,
             content,
@@ -219,13 +220,13 @@ impl TenzikNode {
             &self.signing_key,
             timestamp,
         )?;
-        
+
         self.sequence += 1;
         self.dag.add_event(leave_event)?;
-        
+
         // TODO: Send leave event to all peers
         // TODO: Close all connections
-        
+
         info!("Node shutdown complete");
         Ok(())
     }
@@ -235,7 +236,7 @@ impl TenzikNode {
 mod tests {
     use super::*;
     use tempfile::TempDir;
-    
+
     #[tokio::test]
     async fn test_node_creation() {
         let temp_dir = TempDir::new().unwrap();
@@ -243,11 +244,11 @@ mod tests {
             db_path: temp_dir.path().to_string_lossy().to_string(),
             ..Default::default()
         };
-        
+
         let node = TenzikNode::new(config).unwrap();
         assert_eq!(node.get_connected_peers().len(), 0);
     }
-    
+
     #[test]
     fn test_node_config() {
         let config = NodeConfig::default();
