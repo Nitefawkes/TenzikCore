@@ -91,7 +91,7 @@ This workspace represents the **fresh start** approach based on the new roadmap:
 - [ ] Receipt verification with sig+zk
 
 ### 🚧 Sprint 4 (Weeks 7-8): Demo
-- [ ] Verifiable Webhook Router (`crates/adapters/src/webhook_router.rs`)
+- [ ] Verifiable Webhook Router (`crates/adapters/src/webhook_router.rs`) — currently stubbed until Sprint 4
 - [ ] JSON transform capsule template
 - [ ] Receipt Explorer (basic web UI)
 

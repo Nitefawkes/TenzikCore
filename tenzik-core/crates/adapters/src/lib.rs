@@ -1,7 +1,8 @@
 //! Protocol adapters (HTTP, webhooks, etc)
 //!
-//! This crate provides adapters to bridge external protocols with Tenzik,
-//! starting with the Verifiable Webhook Router for the MVP demo.
+//! This crate provides adapters to bridge external protocols with Tenzik.
+//! The public types are currently lightweight scaffolding so the rest of the
+//! workspace can compile while the real implementations land in Sprint 4.
 
 pub mod webhook_router;
 pub mod http_server;
