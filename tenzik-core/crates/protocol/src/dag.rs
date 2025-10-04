@@ -1,0 +1,2 @@
+//! DAG module - placeholder
+//!\n//! This module will contain DAG definitions when needed.\n//! For now, DAG is defined in the federation storage module.\n\npub use crate::errors::ProtocolError;\n\n// Placeholder types\npub type EventDAG = String;\npub type NodeInfo = String;\n

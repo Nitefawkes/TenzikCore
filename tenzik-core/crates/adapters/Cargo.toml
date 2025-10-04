@@ -1,0 +1,17 @@
+[package]
+name = "tenzik-adapters"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Protocol adapters (HTTP, webhooks, etc)"
+
+[dependencies]
+tokio = { workspace = true }
+axum = "0.7"
+tower = "0.4"
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tenzik-runtime = { path = "../runtime" }
+tenzik-protocol = { path = "../protocol" }

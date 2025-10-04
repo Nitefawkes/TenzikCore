@@ -1,0 +1,19 @@
+{
+  "name": "hello-world-capsule",
+  "version": "0.1.0", 
+  "description": "Hello World Tenzik capsule template",
+  "scripts": {
+    "build": "asc capsule.ts --target release --outFile build/capsule.wasm --optimize --noAssert --runtime none",
+    "build:debug": "asc capsule.ts --target debug --outFile build/capsule.debug.wasm --sourceMap",
+    "optimize": "wasm-opt -Oz build/capsule.wasm -o build/capsule.wasm",
+    "size": "wc -c build/capsule.wasm",
+    "test": "echo 'Use: tenzik test build/capsule.wasm input.json'"
+  },
+  "devDependencies": {
+    "assemblyscript": "^0.27.0"
+  },
+  "files": [
+    "build/capsule.wasm",
+    "README.md"
+  ]
+}

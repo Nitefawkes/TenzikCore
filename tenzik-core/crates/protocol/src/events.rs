@@ -1,0 +1,2 @@
+//! Events module - placeholder
+//!\n//! This module will contain event definitions when needed.\n//! For now, events are defined in the federation storage module.\n\npub use crate::errors::ProtocolError;\n\n// Re-export event types from federation storage\n// This creates a circular dependency that we'll resolve by moving\n// the event definitions here in the future\npub type Event = String; // Placeholder\npub type EventType = String; // Placeholder\n

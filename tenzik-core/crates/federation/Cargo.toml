@@ -1,0 +1,23 @@
+[package]
+name = "tenzik-federation"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Simple DAG-based federation and gossip"
+
+[dependencies]
+tokio = { workspace = true }
+sled = { workspace = true }
+libp2p = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+blake3 = { workspace = true }
+ed25519-dalek = { workspace = true }
+hex = { workspace = true }
+chrono = { workspace = true }
+rand = "0.8"
+tenzik-runtime = { path = "../runtime" }

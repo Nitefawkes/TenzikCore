@@ -1,0 +1,24 @@
+[package]
+name = "tenzik-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Tenzik command line interface"
+
+[[bin]]
+name = "tenzik"
+path = "src/main.rs"
+
+[dependencies]
+clap = { workspace = true }
+tokio = { workspace = true }
+anyhow = { workspace = true }
+serde_json = { workspace = true }
+hex = { workspace = true }
+rand = "0.8"
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tenzik-runtime = { path = "../runtime" }
+tenzik-protocol = { path = "../protocol" }
+tenzik-federation = { path = "../federation" }
