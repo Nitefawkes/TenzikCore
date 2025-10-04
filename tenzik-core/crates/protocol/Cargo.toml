@@ -12,3 +12,6 @@ serde_json = { workspace = true }
 blake3 = { workspace = true }
 ed25519-dalek = { workspace = true }
 thiserror = { workspace = true }
+hex = { workspace = true }
+chrono = { workspace = true }
+tenzik-runtime = { path = "../runtime" }
