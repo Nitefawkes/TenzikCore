@@ -51,11 +51,23 @@ This installs AssemblyScript and required tools.
 
 ### 3. Build the Capsule
 
+**Option A: Using tenzik build (recommended)**
+```bash
+tenzik build
+```
+
+**Option B: Using npm**
 ```bash
 npm run build
 ```
 
 Your WASM capsule will be compiled to `build/capsule.wasm`.
+
+The `tenzik build` command:
+- Auto-detects AssemblyScript or Rust projects
+- Optimizes for size by default
+- Validates WASM output
+- Shows build statistics
 
 ### 4. Test Locally
 
@@ -275,6 +287,21 @@ tenzik init api-processor --template json-transform
 |---------|-------------|---------|
 | `tenzik init <name>` | Create new capsule project | `tenzik init my-capsule` |
 | `tenzik init <name> --template <tpl>` | Create from template | `tenzik init demo --template json-transform` |
+
+### Building
+
+| Command | Description | Example |
+|---------|-------------|---------|
+| `tenzik build` | Build capsule from source | `tenzik build` |
+| `tenzik build -o <path>` | Build to custom output path | `tenzik build -o dist/capsule.wasm` |
+| `tenzik build -O <level>` | Set optimization level | `tenzik build -O aggressive` |
+| `tenzik build -v` | Verbose build output | `tenzik build --verbose` |
+
+**Optimization Levels:**
+- `0` or `none`: No optimization (fastest build)
+- `s` or `size`: Optimize for size (default)
+- `1-2` or `speed`: Optimize for speed
+- `3` or `z` or `aggressive`: Maximum optimization
 
 ### Testing & Validation
 
