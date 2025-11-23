@@ -157,7 +157,11 @@ impl TenzikNode {
 
         let gossip_config = GossipConfig::default();
         let temp_dag = EventDAG::new(format!("{}_gossip", &self.config.db_path))?;
-        let gossip = Arc::new(RwLock::new(GossipProtocol::new(gossip_config, temp_dag)));
+        let gossip = Arc::new(RwLock::new(GossipProtocol::new(
+            gossip_config,
+            temp_dag,
+            self.connection_pool.clone(),
+        )));
         self.gossip = Some(gossip.clone());
 
         // Announce ourselves to the network
