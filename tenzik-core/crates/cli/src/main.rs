@@ -2,7 +2,7 @@ use clap::{Args, Parser, Subcommand};
 use anyhow::Result;
 
 mod commands;
-use commands::{TestArgs, execute_test_command, validate_capsule_file, execute_node_command, validate_db_path, parse_peer_address};
+use commands::{TestArgs, execute_test_command, validate_capsule_file, execute_node_command, validate_db_path, parse_peer_address, execute_init_command, verify_receipt_file, inspect_receipt_file, export_receipt_summary};
 
 #[derive(Parser)]
 #[command(name = "tenzik")]
@@ -83,8 +83,27 @@ pub struct ReceiptArgs {
 
 #[derive(Subcommand)]
 pub enum ReceiptCommands {
-    /// Verify a receipt signature
-    Verify { receipt_id: String },
+    /// Verify a receipt signature and validity
+    Verify {
+        /// Path to receipt JSON file
+        receipt_path: String,
+    },
+    /// Inspect receipt details
+    Inspect {
+        /// Path to receipt JSON file
+        receipt_path: String,
+        /// Show verbose output including full JSON
+        #[arg(short, long)]
+        verbose: bool,
+    },
+    /// Export receipt summary
+    Export {
+        /// Path to receipt JSON file
+        receipt_path: String,
+        /// Output file path
+        #[arg(short, long, default_value = "receipt-summary.json")]
+        output: String,
+    },
 }
 
 #[tokio::main]
@@ -93,9 +112,11 @@ async fn main() -> Result<()> {
     
     match cli.command {
         Commands::Init(args) => {
-            println!("🚀 Initializing Tenzik project: {:?}", args.name);
-            // TODO: Implement project initialization
-            Ok(())
+            let init_args = commands::InitArgs {
+                name: args.name,
+                template: args.template,
+            };
+            execute_init_command(init_args)
         }
         Commands::Test(args) => {
             let test_args = TestArgs {
@@ -130,10 +151,14 @@ async fn main() -> Result<()> {
         }
         Commands::Receipt(args) => {
             match args.command {
-                ReceiptCommands::Verify { receipt_id } => {
-                    println!("🔍 Verifying receipt: {}", receipt_id);
-                    // TODO: Implement receipt verification
-                    Ok(())
+                ReceiptCommands::Verify { receipt_path } => {
+                    verify_receipt_file(&receipt_path)
+                }
+                ReceiptCommands::Inspect { receipt_path, verbose } => {
+                    inspect_receipt_file(&receipt_path, verbose)
+                }
+                ReceiptCommands::Export { receipt_path, output } => {
+                    export_receipt_summary(&receipt_path, &output)
                 }
             }
         }
