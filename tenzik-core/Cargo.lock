@@ -2347,6 +2347,7 @@ dependencies = [
  "tenzik-federation",
  "tenzik-protocol",
  "tenzik-runtime",
+ "tenzik-zk",
  "tokio",
  "tracing",
  "tracing-subscriber",

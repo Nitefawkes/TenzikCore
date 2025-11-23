@@ -23,3 +23,6 @@ ed25519-dalek = { workspace = true }
 tenzik-runtime = { path = "../runtime" }
 tenzik-protocol = { path = "../protocol" }
 tenzik-federation = { path = "../federation" }
+
+[dev-dependencies]
+tenzik-zk = { path = "../zk" }
