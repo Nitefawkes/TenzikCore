@@ -7,7 +7,6 @@
 use blake3;
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize};
-use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 
 /// Execution metrics collected during capsule execution
@@ -328,8 +327,11 @@ impl ReceiptVerifier {
 /// Generate a new signing key for testing
 #[cfg(test)]
 pub fn generate_test_signing_key() -> SigningKey {
+    use rand::RngCore;
     use rand::rngs::OsRng;
-    SigningKey::generate(&mut OsRng)
+    let mut secret_bytes = [0u8; 32];
+    OsRng.fill_bytes(&mut secret_bytes);
+    SigningKey::from_bytes(&secret_bytes)
 }
 
 #[cfg(test)]

@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::time::Duration;
 use tokio::time::{interval, Instant};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 use crate::connection_pool::ConnectionPool;
 use crate::storage::EventDAG;

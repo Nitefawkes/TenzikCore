@@ -3,11 +3,11 @@
 //! This module implements a simple Directed Acyclic Graph (DAG) for storing
 //! and organizing federation events, with persistent storage using sled.
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use sled::{Db, Tree};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::path::Path;
-use tenzik_protocol::{DAGStats, Event, ExecutionReceipt, NodeInfo};
+use tenzik_protocol::{DAGStats, Event};
 use thiserror::Error;
 
 /// Storage-related errors
@@ -188,7 +188,7 @@ impl EventDAG {
         since_event_id: Option<&str>,
     ) -> Result<Vec<Event>, StorageError> {
         let mut events = Vec::new();
-        let mut seen: HashSet<String> = HashSet::new();
+        let seen: HashSet<String> = HashSet::new();
 
         // If no since_event_id, return all events
         if since_event_id.is_none() {
@@ -401,10 +401,14 @@ impl EventDAG {
 mod tests {
     use super::*;
     use tempfile::TempDir;
+    use tenzik_runtime::ExecutionReceipt;
 
     fn create_test_signing_key() -> ed25519_dalek::SigningKey {
+        use rand::RngCore;
         use rand::rngs::OsRng;
-        ed25519_dalek::SigningKey::generate(&mut OsRng)
+        let mut secret_bytes = [0u8; 32];
+        OsRng.fill_bytes(&mut secret_bytes);
+        ed25519_dalek::SigningKey::from_bytes(&secret_bytes)
     }
 
     fn create_test_receipt() -> ExecutionReceipt {

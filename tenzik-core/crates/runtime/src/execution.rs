@@ -5,17 +5,16 @@
 
 use crate::receipts::{ExecMetrics, ExecutionReceipt, ReceiptError};
 use crate::sandbox::{ResourceLimits, SecuritySandbox, SandboxError};
-use crate::validation::{WasmValidator, ValidationError, ValidationResult};
+use crate::validation::{WasmValidator, ValidationError};
 
 use anyhow::{Context, Result};
-use blake3;
 use ed25519_dalek::SigningKey;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use thiserror::Error;
 use tokio::time::timeout;
 use wasmtime::{
-    Config, Engine, Func, Instance, Linker, Memory, MemoryType, Module, Store, TypedFunc, Val,
+    Config, Engine, Linker, Module, Store, TypedFunc,
 };
 
 /// Maximum input/output size in bytes (1MB)
@@ -95,7 +94,7 @@ impl HostFunctions {
     }
 
     /// Blake3 hash commit function
-    fn hash_commit(&self, mut caller: wasmtime::Caller<'_, ()>, ptr: i32, len: i32) -> i32 {
+    fn hash_commit(&self, caller: wasmtime::Caller<'_, ()>, ptr: i32, len: i32) -> i32 {
         // Implementation would read from WASM memory, compute hash, write back
         // For now, return success (0)
         0
@@ -104,7 +103,7 @@ impl HostFunctions {
     /// JSON path extraction function
     fn json_path(
         &self,
-        mut caller: wasmtime::Caller<'_, ()>,
+        caller: wasmtime::Caller<'_, ()>,
         data_ptr: i32,
         data_len: i32,
         path_ptr: i32,
@@ -116,14 +115,14 @@ impl HostFunctions {
     }
 
     /// Base64 encoding function
-    fn base64_encode(&self, mut caller: wasmtime::Caller<'_, ()>, ptr: i32, len: i32) -> i32 {
+    fn base64_encode(&self, caller: wasmtime::Caller<'_, ()>, ptr: i32, len: i32) -> i32 {
         // Implementation would base64 encode and return result
         // For now, return success (0)
         0
     }
 
     /// Get current timestamp in milliseconds
-    fn time_now_ms(&self, mut caller: wasmtime::Caller<'_, ()>) -> i64 {
+    fn time_now_ms(&self, caller: wasmtime::Caller<'_, ()>) -> i64 {
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -131,7 +130,7 @@ impl HostFunctions {
     }
 
     /// Generate random bytes
-    fn random_bytes(&self, mut caller: wasmtime::Caller<'_, ()>, ptr: i32, len: i32) -> i32 {
+    fn random_bytes(&self, caller: wasmtime::Caller<'_, ()>, ptr: i32, len: i32) -> i32 {
         // Implementation would generate deterministic random bytes
         // For now, return success (0)
         0

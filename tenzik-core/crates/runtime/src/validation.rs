@@ -3,7 +3,7 @@
 //! This module provides validation for WebAssembly capsules before execution.
 //! It ensures capsules meet Tenzik's size, security, and interface requirements.
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use thiserror::Error;
 use wasmtime::{Engine, Module};
 

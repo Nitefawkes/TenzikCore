@@ -8,7 +8,6 @@ use std::net::SocketAddr;
 use std::path::Path;
 use tenzik_federation::{TenzikNode, NodeConfig};
 use tokio::signal;
-use tracing::{info, warn, error};
 
 /// Arguments for the node command
 pub struct NodeArgs {
@@ -134,24 +133,31 @@ async fn wait_for_shutdown() {
 /// Validate database path
 pub fn validate_db_path(db_path: &str) -> Result<()> {
     let path = Path::new(db_path);
-    
-    // Check if parent directory exists or can be created
-    if let Some(parent) = path.parent() {
-        if !parent.exists() {
-            std::fs::create_dir_all(parent)
-                .with_context(|| format!("Failed to create database directory: {}", parent.display()))?;
-        }
+
+    // Get the directory where the database will be stored
+    let db_dir = if path.extension().is_some() || !path.to_string_lossy().ends_with('/') {
+        // It's a file path, use parent directory
+        path.parent().unwrap_or(Path::new("."))
+    } else {
+        // It's a directory path
+        path
+    };
+
+    // Create directory if it doesn't exist
+    if !db_dir.exists() {
+        std::fs::create_dir_all(db_dir)
+            .with_context(|| format!("Failed to create database directory: {}", db_dir.display()))?;
     }
-    
-    // Check write permissions by trying to create a test file
-    let test_file = path.join(".tenzik_write_test");
+
+    // Check write permissions by trying to create a test file in the directory
+    let test_file = db_dir.join(".tenzik_write_test");
     match std::fs::write(&test_file, b"test") {
         Ok(_) => {
             let _ = std::fs::remove_file(&test_file);
             Ok(())
         }
         Err(e) => {
-            anyhow::bail!("Cannot write to database path {}: {}", db_path, e);
+            anyhow::bail!("Cannot write to database directory {}: {}", db_dir.display(), e);
         }
     }
 }

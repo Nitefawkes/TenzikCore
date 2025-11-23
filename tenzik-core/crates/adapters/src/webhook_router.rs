@@ -186,7 +186,7 @@ impl WebhookRouter {
         let signing_key = SigningKey::from_bytes(&secret_bytes);
 
         // Generate receipt
-        let mut receipt = ExecutionReceipt::new(
+        let receipt = ExecutionReceipt::new(
             &capsule_bytes,
             input_bytes,
             output.as_bytes(),

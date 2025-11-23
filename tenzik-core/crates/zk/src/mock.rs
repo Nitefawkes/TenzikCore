@@ -221,6 +221,7 @@ mod tests {
             signature: "test_sig".to_string(),
             timestamp: chrono::Utc::now().to_rfc3339(),
             version: "1.0".to_string(),
+            zk_proof: None,
         }
     }
 

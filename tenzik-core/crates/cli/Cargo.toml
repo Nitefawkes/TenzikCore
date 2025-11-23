@@ -26,3 +26,4 @@ tenzik-federation = { path = "../federation" }
 
 [dev-dependencies]
 tenzik-zk = { path = "../zk" }
+tempfile = "3.10"

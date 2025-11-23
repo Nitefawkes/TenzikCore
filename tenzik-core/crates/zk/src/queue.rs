@@ -10,7 +10,7 @@ use tokio::sync::{mpsc, RwLock};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 
-use crate::backend::{ProofBackend, ProofError, ProofRequest, ProofResponse, ProofStatus};
+use crate::backend::{ProofBackend, ProofError, ProofRequest, ProofResponse};
 
 /// Unique identifier for a proof job
 pub type JobId = String;
@@ -270,6 +270,7 @@ mod tests {
             signature: "test_sig".to_string(),
             timestamp: chrono::Utc::now().to_rfc3339(),
             version: "1.0".to_string(),
+            zk_proof: None,
         }
     }
 

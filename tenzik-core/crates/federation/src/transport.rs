@@ -7,8 +7,8 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::{TcpListener, TcpStream};
-use tracing::{debug, error, info, warn};
+use tokio::net::TcpStream;
+use tracing::{debug, info};
 
 use crate::gossip::GossipMessage;
 use tenzik_protocol::NodeInfo;

@@ -16,8 +16,8 @@ use tracing::{debug, error, info, warn};
 use crate::connection_pool::ConnectionPool;
 use crate::gossip::{GossipConfig, GossipMessage, GossipProtocol};
 use crate::storage::EventDAG;
-use crate::transport::{accept_connection, connect_to_peer, PeerConnection};
-use tenzik_protocol::{Event, EventContent, EventType, NodeInfo};
+use crate::transport::accept_connection;
+use tenzik_protocol::{Event, NodeInfo};
 
 /// Configuration for a Tenzik node
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -399,7 +399,7 @@ impl TenzikNode {
     }
 
     /// Shutdown the node gracefully
-    pub async fn shutdown(mut self) -> Result<()> {
+    pub async fn shutdown(self) -> Result<()> {
         info!("Shutting down Tenzik node");
 
         // Send leave announcement
@@ -450,7 +450,7 @@ mod tests {
         };
 
         let node = TenzikNode::new(config).unwrap();
-        assert_eq!(node.get_connected_peers().len(), 0);
+        assert_eq!(node.get_connected_peers().await.len(), 0);
     }
 
     #[test]
