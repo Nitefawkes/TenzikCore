@@ -374,6 +374,82 @@ impl TenzikNode {
         Ok(self.dag.read().await.get_stats()?)
     }
 
+    /// Get comprehensive node status
+    pub async fn get_status(&self) -> Result<crate::status::NodeStatus> {
+        use crate::status::{NodeStatus, HealthStatus, NetworkStats};
+
+        // Get DAG stats
+        let dag_stats = self.get_dag_stats().await?;
+
+        // Calculate uptime
+        let uptime = chrono::Utc::now() - self.start_time;
+        let uptime_duration = std::time::Duration::from_secs(uptime.num_seconds() as u64);
+
+        // Get peer count
+        let peer_count = self.peers.read().await.len();
+
+        // Get gossip stats if available
+        let network_stats = if let Some(ref gossip) = self.gossip {
+            let gossip_lock = gossip.read().await;
+            let stats = gossip_lock.get_stats();
+            NetworkStats {
+                events_sent: stats.events_sent as usize,
+                events_received: stats.events_received as usize,
+                sync_count: stats.sync_attempts as usize,
+                active_syncs: 0, // Not tracked yet
+            }
+        } else {
+            NetworkStats {
+                events_sent: 0,
+                events_received: 0,
+                sync_count: 0,
+                active_syncs: 0,
+            }
+        };
+
+        // Determine health status
+        let health = if peer_count == 0 && uptime.num_seconds() > 60 {
+            HealthStatus::Warning {
+                message: "No peers connected after 60 seconds".to_string(),
+            }
+        } else {
+            HealthStatus::Healthy
+        };
+
+        Ok(NodeStatus {
+            name: Some(self.config.name.clone()),
+            listen_addr: self.config.listen_addr,
+            public_key: hex::encode(self.signing_key.verifying_key().as_bytes()),
+            uptime: uptime_duration,
+            peer_count,
+            event_count: dag_stats.total_events,
+            receipt_count: dag_stats.receipt_count,
+            db_path: self.config.db_path.clone(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            health,
+            network: network_stats,
+        })
+    }
+
+    /// Get detailed peer status information
+    pub async fn get_peer_status(&self) -> Vec<crate::status::PeerStatus> {
+        use crate::status::{PeerStatus, ConnectionStatus};
+
+        let peers = self.peers.read().await;
+        peers
+            .iter()
+            .map(|(addr, peer)| PeerStatus {
+                address: *addr,
+                public_key: Some(peer.node_info.public_key.clone()),
+                name: Some(peer.node_info.name.clone()),
+                status: ConnectionStatus::Connected,
+                last_seen: Some(chrono::Utc::now().to_rfc3339()),
+                events_received: 0, // TODO: Track per-peer stats
+                events_sent: 0,     // TODO: Track per-peer stats
+            })
+            .collect()
+    }
+
     /// Add an event to the local DAG (e.g., from execution)
     pub async fn add_event(&mut self, event: Event) -> Result<()> {
         self.message_tx.send(NodeMessage::NewEvent(event))?;

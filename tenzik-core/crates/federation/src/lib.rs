@@ -8,11 +8,13 @@ pub mod gossip;
 pub mod node;
 pub mod storage;
 pub mod transport;
+pub mod status;
 
 // Re-export key types
 pub use gossip::{GossipProtocol, PeerInfo};
 pub use node::{NodeConfig, TenzikNode};
 pub use storage::{EventDAG, StorageError};
+pub use status::{NodeStatus, PeerStatus, HealthStatus, ConnectionStatus, NetworkStats};
 pub use tenzik_protocol::{DAGStats, Event, EventContent, EventType, NodeInfo};
 
 #[cfg(test)]
