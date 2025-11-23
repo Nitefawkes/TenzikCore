@@ -121,10 +121,10 @@ This implementation learns from the previous Tent-based architecture but starts 
 
 ## Next Steps
 
-1. **Implement Sprint 1**: Start with `crates/runtime/src/validation.rs`
-2. **Follow roadmap**: Complete gates A & B for MVP foundation
-3. **Ship demo**: Verifiable Webhook Router with receipt verification
-4. **Scale gradually**: Add features based on real usage
+1. **Implement Sprint 2**: Event DAG and minimal federation in `crates/federation/`
+2. **Two-node demo**: Build receipt exchange between nodes
+3. **Sprint 3**: Add optional ZK proof backend support
+4. **Ship demo**: Verifiable Webhook Router with receipt verification
 
 ## License
 

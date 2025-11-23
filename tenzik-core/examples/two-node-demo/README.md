@@ -1,5 +1,7 @@
 # Two-Node Federation Demo
 
+> **Note**: This demo is planned for Sprint 2 and is not yet implemented. This documentation describes the intended functionality.
+
 This demo shows how two Tenzik nodes can federate and exchange receipts in real-time.
 
 ## Overview
