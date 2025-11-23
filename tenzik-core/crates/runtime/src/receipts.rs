@@ -63,7 +63,7 @@ pub struct ExecutionReceipt {
     pub capsule_id: String,
     /// Blake3 hash of the input JSON
     pub input_commit: String,
-    /// Blake3 hash of the output JSON  
+    /// Blake3 hash of the output JSON
     pub output_commit: String,
     /// Execution metrics
     pub exec_metrics: ExecMetrics,
@@ -77,6 +77,9 @@ pub struct ExecutionReceipt {
     pub timestamp: String,
     /// Version of the receipt format
     pub version: String,
+    /// Optional zero-knowledge proof (hex-encoded bytes)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub zk_proof: Option<String>,
 }
 
 impl ExecutionReceipt {
@@ -125,7 +128,19 @@ impl ExecutionReceipt {
             signature,
             timestamp,
             version: "1.0.0".to_string(),
+            zk_proof: None,
         })
+    }
+
+    /// Attach a zero-knowledge proof to this receipt
+    pub fn with_proof(mut self, proof: Vec<u8>) -> Self {
+        self.zk_proof = Some(hex::encode(proof));
+        self
+    }
+
+    /// Check if this receipt has a ZK proof attached
+    pub fn has_proof(&self) -> bool {
+        self.zk_proof.is_some()
     }
     
     /// Verify the receipt signature
@@ -262,6 +277,9 @@ impl ExecutionReceipt {
 }
 
 /// Receipt verification utilities
+///
+/// This verifies signatures and age. ZK proof verification should be done
+/// at a higher level using the tenzik-zk crate's ProofBackend.
 pub struct ReceiptVerifier {
     /// Maximum age for receipts to be considered valid (in seconds)
     pub max_receipt_age_seconds: u64,
@@ -282,19 +300,22 @@ impl ReceiptVerifier {
             max_receipt_age_seconds,
         }
     }
-    
-    /// Verify a receipt completely (signature + age)
+
+    /// Verify a receipt's signature and age
+    ///
+    /// Note: This does NOT verify ZK proofs. For ZK proof verification,
+    /// use the tenzik-zk crate's ProofBackend::verify_proof method.
     pub fn verify_receipt(&self, receipt: &ExecutionReceipt) -> Result<bool, ReceiptError> {
         // Check signature
         if !receipt.verify_node_signature()? {
             return Ok(false);
         }
-        
+
         // Check age
         if !receipt.is_recent(self.max_receipt_age_seconds) {
             return Ok(false);
         }
-        
+
         Ok(true)
     }
     
