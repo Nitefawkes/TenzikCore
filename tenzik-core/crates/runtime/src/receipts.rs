@@ -7,7 +7,6 @@
 use blake3;
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize};
-use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 
 /// Execution metrics collected during capsule execution
@@ -143,14 +142,18 @@ impl ExecutionReceipt {
         
         // Decode the signature
         let signature_bytes = hex::decode(&self.signature)
-            .map_err(|e| ReceiptError::InvalidFormat { 
-                reason: format!("Invalid signature hex: {}", e) 
+            .map_err(|e| ReceiptError::InvalidFormat {
+                reason: format!("Invalid signature hex: {}", e)
             })?;
-        
-        let signature = Signature::from_bytes(&signature_bytes)
-            .map_err(|e| ReceiptError::CryptographicError { 
-                source: Box::new(e) 
+
+        // Convert Vec<u8> to [u8; 64] array
+        let signature_array: [u8; 64] = signature_bytes
+            .try_into()
+            .map_err(|_| ReceiptError::InvalidFormat {
+                reason: "Signature must be exactly 64 bytes".to_string()
             })?;
+
+        let signature = Signature::from_bytes(&signature_array);
         
         // Verify the signature
         match verifying_key.verify(payload.as_bytes(), &signature) {
@@ -303,8 +306,11 @@ impl ReceiptVerifier {
 /// Generate a new signing key for testing
 #[cfg(test)]
 pub fn generate_test_signing_key() -> SigningKey {
-    use rand::rngs::OsRng;
-    SigningKey::generate(&mut OsRng)
+    use rand::RngCore;
+    let mut rng = rand::rngs::OsRng;
+    let mut secret_bytes = [0u8; 32];
+    rng.fill_bytes(&mut secret_bytes);
+    SigningKey::from_bytes(&secret_bytes)
 }
 
 #[cfg(test)]

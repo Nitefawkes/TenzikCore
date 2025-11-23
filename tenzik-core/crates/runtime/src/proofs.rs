@@ -260,13 +260,7 @@ impl ProofBackendFactory {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::receipts::{ExecMetrics, ExecutionReceipt};
-    use ed25519_dalek::SigningKey;
-    use rand::rngs::OsRng;
-
-    fn generate_test_signing_key() -> SigningKey {
-        SigningKey::generate(&mut OsRng)
-    }
+    use crate::receipts::{ExecMetrics, ExecutionReceipt, generate_test_signing_key};
 
     #[tokio::test]
     async fn test_mock_backend_proof_generation() {
