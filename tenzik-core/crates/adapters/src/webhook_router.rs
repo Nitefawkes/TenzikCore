@@ -6,10 +6,11 @@
 use axum::{
     extract::{Path, State},
     http::StatusCode,
-    response::{IntoResponse, Response},
+    response::{Html, IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
+use tower_http::services::ServeDir;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -182,11 +183,22 @@ impl WebhookRouter {
 
     /// Build the Axum router
     pub fn build_router(self: Arc<Self>) -> Router {
+        // Get the path to static files
+        let static_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("static");
+
         Router::new()
             .route("/health", get(health_check))
             .route("/routes", get(list_routes_handler))
             .route("/webhook/:route", post(webhook_handler))
             .route("/proof/:job_id", get(get_proof_handler))
+            // Receipt Explorer routes
+            .route("/explorer", get(explorer_handler))
+            .route("/api/receipts", get(list_receipts_handler))
+            .route("/api/receipts/:id", get(get_receipt_handler))
+            .route("/api/verify", post(verify_receipt_handler))
+            // Static files for the Receipt Explorer UI
+            .nest_service("/static", ServeDir::new(static_dir))
             .with_state(self)
     }
 
@@ -402,6 +414,62 @@ async fn get_proof_handler(
             }))
         ).into_response()
     }
+}
+
+/// Serve the Receipt Explorer UI
+async fn explorer_handler() -> Html<&'static str> {
+    Html(include_str!("../static/index.html"))
+}
+
+/// List recent receipts
+/// Note: This is a simplified implementation that returns demo data.
+/// A production version would store receipts in a persistent store.
+async fn list_receipts_handler(
+    State(_router): State<Arc<WebhookRouter>>,
+) -> Json<serde_json::Value> {
+    // In a production implementation, this would query a receipt store
+    // For now, return an empty array to indicate receipts should come from actual executions
+    Json(serde_json::json!([]))
+}
+
+/// Get a specific receipt by ID
+async fn get_receipt_handler(
+    Path(id): Path<String>,
+    State(_router): State<Arc<WebhookRouter>>,
+) -> Response {
+    // In a production implementation, this would query a receipt store
+    (
+        StatusCode::NOT_FOUND,
+        Json(serde_json::json!({
+            "error": format!("Receipt {} not found. Receipts are currently ephemeral.", id)
+        }))
+    ).into_response()
+}
+
+/// Verify receipt structure
+#[derive(Deserialize)]
+struct VerifyRequest {
+    receipt: ExecutionReceipt,
+}
+
+async fn verify_receipt_handler(
+    State(_router): State<Arc<WebhookRouter>>,
+    Json(request): Json<VerifyRequest>,
+) -> Json<serde_json::Value> {
+    // Basic structure validation
+    let has_signature = !request.receipt.signature.is_empty();
+    let has_zk_proof = request.receipt.zk_proof.is_some();
+
+    // In a production implementation, this would actually verify the signature
+    // using the ReceiptVerifier and optionally verify the ZK proof
+
+    Json(serde_json::json!({
+        "valid": has_signature,
+        "signature_valid": has_signature,
+        "zk_proof_valid": has_zk_proof,
+        "receipt_id": request.receipt.receipt_id(),
+        "note": "Full cryptographic verification requires ReceiptVerifier with node's public key"
+    }))
 }
 
 #[cfg(test)]
