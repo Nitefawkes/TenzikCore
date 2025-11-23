@@ -8,6 +8,7 @@ use blake3;
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use crate::proofs::{ZkProof, ProofBackend, ProofError};
 
 /// Execution metrics collected during capsule execution
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -62,7 +63,7 @@ pub struct ExecutionReceipt {
     pub capsule_id: String,
     /// Blake3 hash of the input JSON
     pub input_commit: String,
-    /// Blake3 hash of the output JSON  
+    /// Blake3 hash of the output JSON
     pub output_commit: String,
     /// Execution metrics
     pub exec_metrics: ExecMetrics,
@@ -76,6 +77,9 @@ pub struct ExecutionReceipt {
     pub timestamp: String,
     /// Version of the receipt format
     pub version: String,
+    /// Optional ZK proof (can be added later via attach_proof)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub zk_proof: Option<ZkProof>,
 }
 
 impl ExecutionReceipt {
@@ -124,7 +128,20 @@ impl ExecutionReceipt {
             signature,
             timestamp,
             version: "1.0.0".to_string(),
+            zk_proof: None,
         })
+    }
+
+    /// Attach a ZK proof to this receipt
+    ///
+    /// This can be done asynchronously after the receipt is created
+    pub fn attach_proof(&mut self, proof: ZkProof) {
+        self.zk_proof = Some(proof);
+    }
+
+    /// Check if this receipt has a ZK proof attached
+    pub fn has_zk_proof(&self) -> bool {
+        self.zk_proof.is_some()
     }
     
     /// Verify the receipt signature
@@ -288,18 +305,59 @@ impl ReceiptVerifier {
         if !receipt.verify_node_signature()? {
             return Ok(false);
         }
-        
+
         // Check age
         if !receipt.is_recent(self.max_receipt_age_seconds) {
             return Ok(false);
         }
-        
+
         Ok(true)
     }
-    
+
+    /// Verify receipt with ZK proof if present
+    ///
+    /// This performs standard verification (signature + age) and additionally
+    /// verifies the ZK proof if one is attached to the receipt.
+    pub async fn verify_with_zk(
+        &self,
+        receipt: &ExecutionReceipt,
+        backend: &dyn ProofBackend,
+    ) -> Result<bool, ReceiptError> {
+        // First do standard verification
+        if !self.verify_receipt(receipt)? {
+            return Ok(false);
+        }
+
+        // If there's a ZK proof, verify it
+        if let Some(ref proof) = receipt.zk_proof {
+            match backend.verify_proof(proof, receipt).await {
+                Ok(valid) => Ok(valid),
+                Err(e) => Err(ReceiptError::InvalidFormat {
+                    reason: format!("ZK proof verification failed: {}", e),
+                }),
+            }
+        } else {
+            // No ZK proof, just return result of standard verification
+            Ok(true)
+        }
+    }
+
     /// Verify multiple receipts
     pub fn verify_receipts(&self, receipts: &[ExecutionReceipt]) -> Vec<Result<bool, ReceiptError>> {
         receipts.iter().map(|r| self.verify_receipt(r)).collect()
+    }
+
+    /// Verify multiple receipts with ZK proofs
+    pub async fn verify_receipts_with_zk(
+        &self,
+        receipts: &[ExecutionReceipt],
+        backend: &dyn ProofBackend,
+    ) -> Vec<Result<bool, ReceiptError>> {
+        let mut results = Vec::new();
+        for receipt in receipts {
+            results.push(self.verify_with_zk(receipt, backend).await);
+        }
+        results
     }
 }
 
@@ -456,11 +514,121 @@ mod tests {
             duration_ms: 125,
             host_function_calls: 7,
         };
-        
+
         // Test serialization
         let json = serde_json::to_string(&metrics).unwrap();
         let deserialized: ExecMetrics = serde_json::from_str(&json).unwrap();
-        
+
         assert_eq!(metrics, deserialized);
+    }
+
+    #[test]
+    fn test_receipt_zk_proof_attachment() {
+        use crate::proofs::{ZkProof, ProofBackendType, ProofMetadata};
+
+        let signing_key = generate_test_signing_key();
+
+        let mut receipt = ExecutionReceipt::new(
+            b"test",
+            b"input",
+            b"output",
+            ExecMetrics::default(),
+            &signing_key,
+            42,
+        ).unwrap();
+
+        // Initially should not have a proof
+        assert!(!receipt.has_zk_proof());
+
+        // Attach a mock proof
+        let proof = ZkProof {
+            backend_type: ProofBackendType::Mock,
+            proof_data: b"mock proof".to_vec(),
+            public_inputs: b"inputs".to_vec(),
+            metadata: ProofMetadata {
+                backend_version: "test-1.0".to_string(),
+                generation_time_ms: 100,
+                proof_size_bytes: 10,
+                timestamp: chrono::Utc::now().to_rfc3339(),
+            },
+        };
+
+        receipt.attach_proof(proof);
+
+        // Should now have a proof
+        assert!(receipt.has_zk_proof());
+    }
+
+    #[tokio::test]
+    async fn test_receipt_verification_with_zk() {
+        use crate::proofs::MockProofBackend;
+        use std::sync::Arc;
+
+        let backend = MockProofBackend::new();
+        let verifier = ReceiptVerifier::new(3600);
+        let signing_key = generate_test_signing_key();
+
+        // Create receipt
+        let mut receipt = ExecutionReceipt::new(
+            b"test capsule",
+            b"input",
+            b"output",
+            ExecMetrics::default(),
+            &signing_key,
+            42,
+        ).unwrap();
+
+        // Verify without ZK proof
+        let result = verifier.verify_with_zk(&receipt, &backend).await.unwrap();
+        assert!(result);
+
+        // Generate and attach ZK proof
+        let proof = backend.generate_proof(&receipt).await.unwrap();
+        receipt.attach_proof(proof);
+
+        // Verify with ZK proof
+        let result = verifier.verify_with_zk(&receipt, &backend).await.unwrap();
+        assert!(result);
+    }
+
+    #[tokio::test]
+    async fn test_receipt_verification_with_invalid_zk() {
+        use crate::proofs::{MockProofBackend, ZkProof, ProofBackendType, ProofMetadata};
+        use std::sync::Arc;
+
+        let backend = MockProofBackend::new();
+        let verifier = ReceiptVerifier::new(3600);
+        let signing_key1 = generate_test_signing_key();
+        let signing_key2 = generate_test_signing_key();
+
+        // Create receipt 1
+        let mut receipt1 = ExecutionReceipt::new(
+            b"capsule1",
+            b"input1",
+            b"output1",
+            ExecMetrics::default(),
+            &signing_key1,
+            42,
+        ).unwrap();
+
+        // Create receipt 2
+        let receipt2 = ExecutionReceipt::new(
+            b"capsule2",
+            b"input2",
+            b"output2",
+            ExecMetrics::default(),
+            &signing_key2,
+            43,
+        ).unwrap();
+
+        // Generate proof for receipt2
+        let proof2 = backend.generate_proof(&receipt2).await.unwrap();
+
+        // Attach proof2 to receipt1 (mismatch!)
+        receipt1.attach_proof(proof2);
+
+        // Verification should fail
+        let result = verifier.verify_with_zk(&receipt1, &backend).await.unwrap();
+        assert!(!result);
     }
 }
