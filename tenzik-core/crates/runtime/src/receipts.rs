@@ -143,14 +143,18 @@ impl ExecutionReceipt {
         
         // Decode the signature
         let signature_bytes = hex::decode(&self.signature)
-            .map_err(|e| ReceiptError::InvalidFormat { 
-                reason: format!("Invalid signature hex: {}", e) 
+            .map_err(|e| ReceiptError::InvalidFormat {
+                reason: format!("Invalid signature hex: {}", e)
             })?;
-        
-        let signature = Signature::from_bytes(&signature_bytes)
-            .map_err(|e| ReceiptError::CryptographicError { 
-                source: Box::new(e) 
+
+        // Convert Vec<u8> to [u8; 64]
+        let signature_array: [u8; 64] = signature_bytes
+            .try_into()
+            .map_err(|_| ReceiptError::InvalidFormat {
+                reason: "Signature must be exactly 64 bytes".to_string()
             })?;
+
+        let signature = Signature::from_bytes(&signature_array);
         
         // Verify the signature
         match verifying_key.verify(payload.as_bytes(), &signature) {

@@ -19,20 +19,20 @@ pub const ALLOWED_IMPORT_PREFIXES: &[&str] = &[
 ];
 
 /// Validation errors
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum ValidationError {
     #[error("Capsule size {size} bytes exceeds maximum {max_size} bytes")]
     SizeExceeded { size: usize, max_size: usize },
-    
+
     #[error("Missing required export: {export}")]
     MissingRequiredExport { export: String },
-    
+
     #[error("Unauthorized import: {import}")]
     UnauthorizedImport { import: String },
-    
+
     #[error("Invalid WASM module: {reason}")]
     InvalidModule { reason: String },
-    
+
     #[error("Module compilation failed: {reason}")]
     CompilationFailed { reason: String },
 }

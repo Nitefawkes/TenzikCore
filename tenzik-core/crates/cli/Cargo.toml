@@ -19,6 +19,7 @@ hex = { workspace = true }
 rand = "0.8"
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+ed25519-dalek = { workspace = true }
 tenzik-runtime = { path = "../runtime" }
 tenzik-protocol = { path = "../protocol" }
 tenzik-federation = { path = "../federation" }

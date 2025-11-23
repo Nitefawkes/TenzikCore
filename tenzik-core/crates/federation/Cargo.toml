@@ -21,3 +21,4 @@ hex = { workspace = true }
 chrono = { workspace = true }
 rand = "0.8"
 tenzik-runtime = { path = "../runtime" }
+tenzik-protocol = { path = "../protocol" }

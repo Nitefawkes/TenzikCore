@@ -6,6 +6,7 @@
 pub mod gossip;
 pub mod node;
 pub mod storage;
+pub mod transport;
 
 // Re-export key types
 pub use gossip::{GossipProtocol, PeerInfo};

@@ -34,9 +34,7 @@ pub async fn execute_node_command(args: NodeArgs) -> Result<()> {
     println!();
 
     // Initialize tracing for the node
-    tracing_subscriber::fmt()
-        .with_env_filter("tenzik=debug,info")
-        .init();
+    tracing_subscriber::fmt().init();
 
     // Parse listen address
     let listen_addr: SocketAddr = format!("127.0.0.1:{}", args.port)
@@ -74,7 +72,7 @@ pub async fn execute_node_command(args: NodeArgs) -> Result<()> {
         .context("Failed to start Tenzik node")?;
 
     println!("✅ Node started successfully!");
-    println!("📊 Initial DAG stats: {:?}", node.get_dag_stats()?);
+    println!("📊 Initial DAG stats: {:?}", node.get_dag_stats().await?);
     println!();
 
     // Print status information
@@ -96,15 +94,15 @@ pub async fn execute_node_command(args: NodeArgs) -> Result<()> {
 /// Print current node status
 async fn print_node_status(node: &TenzikNode) {
     println!("📈 Node Status:");
-    println!("   Connected peers: {}", node.get_connected_peers().len());
-    
-    if let Ok(stats) = node.get_dag_stats() {
+    println!("   Connected peers: {}", node.get_connected_peers().await.len());
+
+    if let Ok(stats) = node.get_dag_stats().await {
         println!("   DAG events: {}", stats.total_events);
         println!("   DAG tips: {}", stats.tip_count);
         println!("   Receipt count: {}", stats.receipt_count);
         println!("   Node count: {}", stats.node_count);
     }
-    
+
     println!();
 }
 

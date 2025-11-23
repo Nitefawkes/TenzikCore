@@ -188,7 +188,7 @@ impl EventDAG {
         since_event_id: Option<&str>,
     ) -> Result<Vec<Event>, StorageError> {
         let mut events = Vec::new();
-        let mut seen = HashSet::new();
+        let mut seen: HashSet<String> = HashSet::new();
 
         // If no since_event_id, return all events
         if since_event_id.is_none() {
