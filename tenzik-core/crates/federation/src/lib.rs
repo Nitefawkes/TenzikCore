@@ -3,6 +3,7 @@
 //! This crate implements a minimal federated event system using a DAG structure
 //! for receipt exchange between Tenzik nodes.
 
+pub mod connection_pool;
 pub mod gossip;
 pub mod node;
 pub mod storage;

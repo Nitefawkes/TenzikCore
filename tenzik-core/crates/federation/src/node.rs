@@ -11,9 +11,10 @@ use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::sync::{mpsc, RwLock};
 use tokio::task::JoinHandle;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
-use crate::gossip::{GossipConfig, GossipProtocol};
+use crate::connection_pool::ConnectionPool;
+use crate::gossip::{GossipConfig, GossipMessage, GossipProtocol};
 use crate::storage::EventDAG;
 use crate::transport::{accept_connection, connect_to_peer, PeerConnection};
 use tenzik_protocol::{Event, EventContent, EventType, NodeInfo};
@@ -87,6 +88,8 @@ pub struct TenzikNode {
     start_time: chrono::DateTime<chrono::Utc>,
     /// Gossip protocol
     gossip: Option<Arc<RwLock<GossipProtocol>>>,
+    /// Connection pool for peer connections
+    connection_pool: Arc<ConnectionPool>,
     /// Channel for node messages
     message_tx: mpsc::UnboundedSender<NodeMessage>,
     message_rx: Option<mpsc::UnboundedReceiver<NodeMessage>>,
@@ -112,6 +115,17 @@ impl TenzikNode {
         // Create message channel
         let (message_tx, message_rx) = mpsc::unbounded_channel();
 
+        // Create node info for connection pool
+        let node_info = NodeInfo {
+            public_key: hex::encode(signing_key.verifying_key().as_bytes()),
+            address: config.listen_addr.to_string(),
+            name: config.name.clone(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+        };
+
+        // Create connection pool
+        let connection_pool = Arc::new(ConnectionPool::new(node_info));
+
         Ok(TenzikNode {
             config,
             dag,
@@ -120,6 +134,7 @@ impl TenzikNode {
             sequence: Arc::new(RwLock::new(1)),
             start_time: chrono::Utc::now(),
             gossip: None,
+            connection_pool,
             message_tx,
             message_rx: Some(message_rx),
             tasks: Vec::new(),
@@ -187,6 +202,7 @@ impl TenzikNode {
         // Start accepting incoming connections
         let node_info = self.get_node_info();
         let message_tx = self.message_tx.clone();
+        let connection_pool = self.connection_pool.clone();
         let accept_task = tokio::spawn(async move {
             loop {
                 match listener.accept().await {
@@ -195,13 +211,18 @@ impl TenzikNode {
 
                         let node_info_clone = node_info.clone();
                         let message_tx_clone = message_tx.clone();
+                        let connection_pool_clone = connection_pool.clone();
 
                         tokio::spawn(async move {
                             match accept_connection(stream, peer_addr, &node_info_clone).await {
-                                Ok(peer_info) => {
+                                Ok((peer_stream, peer_info)) => {
                                     info!("Accepted connection from {}: {}", peer_addr, peer_info.name);
+
+                                    // Add connection to pool
+                                    connection_pool_clone.add_connection(peer_stream, peer_addr, peer_info.clone()).await;
+
+                                    // Notify node of new peer
                                     let _ = message_tx_clone.send(NodeMessage::PeerConnected(peer_addr, peer_info));
-                                    // TODO: Handle ongoing communication with this peer
                                 }
                                 Err(e) => {
                                     error!("Failed to accept connection from {}: {}", peer_addr, e);
@@ -219,15 +240,18 @@ impl TenzikNode {
 
         // Connect to initial peers
         for peer_addr in self.config.initial_peers.clone() {
-            let node_info = self.get_node_info();
+            let connection_pool = self.connection_pool.clone();
             let message_tx = self.message_tx.clone();
 
             tokio::spawn(async move {
-                match connect_to_peer(peer_addr, &node_info).await {
-                    Ok((_stream, peer_info)) => {
+                match connection_pool.get_or_connect(peer_addr).await {
+                    Ok(conn) => {
+                        let conn = conn.read().await;
+                        let peer_info = conn.peer_info().clone();
+                        drop(conn);
+
                         info!("Connected to peer {}: {}", peer_addr, peer_info.name);
                         let _ = message_tx.send(NodeMessage::PeerConnected(peer_addr, peer_info));
-                        // TODO: Handle ongoing communication with this peer
                     }
                     Err(e) => {
                         warn!("Failed to connect to initial peer {}: {}", peer_addr, e);
@@ -235,6 +259,46 @@ impl TenzikNode {
                 }
             });
         }
+
+        // Start periodic sync task
+        let dag_clone = self.dag.clone();
+        let connection_pool_clone = self.connection_pool.clone();
+        let peers_clone = self.peers.clone();
+
+        let sync_task = tokio::spawn(async move {
+            use tokio::time::{interval, Duration};
+            let mut interval = interval(Duration::from_secs(10)); // Sync every 10 seconds
+
+            loop {
+                interval.tick().await;
+
+                // Check if we have any peers
+                let peer_count = peers_clone.read().await.len();
+                if peer_count == 0 {
+                    continue;
+                }
+
+                // Get recent events (last 100)
+                let events = match dag_clone.read().await.get_tips() {
+                    Ok(tips) => tips,
+                    Err(e) => {
+                        warn!("Failed to get tips for sync: {}", e);
+                        continue;
+                    }
+                };
+
+                if !events.is_empty() {
+                    debug!("Syncing {} events to peers", events.len());
+                    let message = GossipMessage::Events {
+                        events,
+                        has_more: false,
+                    };
+
+                    let _ = connection_pool_clone.broadcast(message).await;
+                }
+            }
+        });
+        self.tasks.push(sync_task);
 
         // Start gossip protocol
         let gossip_clone = gossip.clone();
@@ -309,6 +373,24 @@ impl TenzikNode {
     /// Add an event to the local DAG (e.g., from execution)
     pub async fn add_event(&mut self, event: Event) -> Result<()> {
         self.message_tx.send(NodeMessage::NewEvent(event))?;
+        Ok(())
+    }
+
+    /// Broadcast events to all connected peers
+    pub async fn broadcast_events(&self, events: Vec<Event>) -> Result<()> {
+        let message = GossipMessage::Events {
+            events,
+            has_more: false,
+        };
+
+        let results = self.connection_pool.broadcast(message).await;
+
+        // Log any failures
+        let failures: Vec<_> = results.iter().filter(|r| r.is_err()).collect();
+        if !failures.is_empty() {
+            warn!("Failed to send to {} peer(s)", failures.len());
+        }
+
         Ok(())
     }
 

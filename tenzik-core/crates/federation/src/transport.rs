@@ -121,7 +121,7 @@ pub async fn accept_connection(
     mut stream: TcpStream,
     peer_addr: SocketAddr,
     local_node_info: &NodeInfo,
-) -> Result<NodeInfo> {
+) -> Result<(TcpStream, NodeInfo)> {
     debug!("Accepting connection from: {}", peer_addr);
 
     // Receive handshake
@@ -138,7 +138,7 @@ pub async fn accept_connection(
                 .context("Failed to send handshake ack")?;
 
             info!("Accepted connection from peer: {}", peer_addr);
-            Ok(node_info)
+            Ok((stream, node_info))
         }
         _ => {
             // Send error response
@@ -273,7 +273,7 @@ mod tests {
         let (_, peer_info) = connect_to_peer(addr, &client_info).await.unwrap();
 
         // Verify server received client info
-        let client_info_at_server = server_handle.await.unwrap();
+        let (_stream, client_info_at_server) = server_handle.await.unwrap();
         assert_eq!(client_info_at_server.name, "client");
         assert_eq!(peer_info.name, "server");
     }
