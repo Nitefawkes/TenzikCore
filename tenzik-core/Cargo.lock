@@ -2406,6 +2406,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "tenzik-zk"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "blake3",
+ "chrono",
+ "futures",
+ "rand",
+ "serde",
+ "serde_json",
+ "tenzik-protocol",
+ "tenzik-runtime",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "termcolor"
 version = "1.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

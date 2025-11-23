@@ -1,0 +1,24 @@
+[package]
+name = "tenzik-zk"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Zero-knowledge proof backend for Tenzik receipts"
+
+[dependencies]
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+async-trait = { workspace = true }
+blake3 = { workspace = true }
+chrono = { workspace = true }
+futures = "0.3"
+tenzik-runtime = { path = "../runtime" }
+tenzik-protocol = { path = "../protocol" }
+
+[dev-dependencies]
+rand = "0.8"
