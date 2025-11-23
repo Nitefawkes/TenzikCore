@@ -96,16 +96,18 @@ This workspace represents the **fresh start** approach based on the new roadmap:
 - ✅ ZK proof attachment and verification for ExecutionReceipts
 - ✅ All tests passing (13 receipt tests, 6 proof queue tests)
 
-### 🚧 Sprint 4 (Weeks 7-8): Demo - 66% Complete
+### ✅ Sprint 4 COMPLETED - Demo Ready! 🎉
 - [x] Verifiable Webhook Router (`crates/adapters/src/webhook_router.rs`)
 - [x] JSON transform capsule template (`capsules/templates/json-transform/`)
-- [ ] Receipt Explorer (basic web UI)
+- [x] Receipt Explorer (basic web UI at `/explorer`)
 
-**Completed:**
+**Achievements:**
 - ✅ Full Axum-based HTTP server with route management
 - ✅ WASM capsule execution via webhooks with ZK proof support
 - ✅ JSON transformation capsule with path extraction
-- ✅ Comprehensive documentation and examples
+- ✅ Modern web UI for viewing and verifying receipts
+- ✅ API endpoints: /api/receipts, /api/verify, /proof/:job_id
+- ✅ Complete documentation and integration examples
 
 ## Migration from Previous Codebase
 
