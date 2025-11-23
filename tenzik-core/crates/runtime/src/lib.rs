@@ -8,6 +8,7 @@ pub mod sandbox;
 pub mod execution;
 pub mod receipts;
 pub mod proofs;
+pub mod proof_queue;
 
 // Re-export key types for easy access
 pub use validation::{WasmValidator, ValidationResult, ValidationError, ValidatorConfig};
@@ -18,6 +19,7 @@ pub use proofs::{
     ProofBackend, ProofBackendType, ProofBackendFactory, ZkProof, ProofError,
     ProofMetadata, MockProofBackend, BackendInfo,
 };
+pub use proof_queue::{ProofJobQueue, ProofJob, JobStatus, ProofJobError, QueueStats};
 
 // Re-export crypto types for convenience
 pub use ed25519_dalek::{SigningKey, VerifyingKey};
