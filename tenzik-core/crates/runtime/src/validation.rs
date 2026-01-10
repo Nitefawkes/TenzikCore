@@ -19,7 +19,7 @@ pub const ALLOWED_IMPORT_PREFIXES: &[&str] = &[
 ];
 
 /// Validation errors
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum ValidationError {
     #[error("Capsule size {size} bytes exceeds maximum {max_size} bytes")]
     SizeExceeded { size: usize, max_size: usize },

@@ -10,8 +10,16 @@ description = "Protocol adapters (HTTP, webhooks, etc)"
 tokio = { workspace = true }
 axum = "0.7"
 tower = "0.4"
+tower-http = { version = "0.5", features = ["fs"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
+thiserror = { workspace = true }
+ed25519-dalek = { workspace = true }
+tracing = { workspace = true }
+blake3 = { workspace = true }
 tenzik-runtime = { path = "../runtime" }
 tenzik-protocol = { path = "../protocol" }
+
+[dev-dependencies]
+rand = "0.8"
