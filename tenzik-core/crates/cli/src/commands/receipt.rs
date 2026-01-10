@@ -42,7 +42,9 @@ pub fn verify_receipt_file(receipt_path: &str) -> Result<()> {
     print!("  ✓ Checking ZK proof... ");
     if receipt.has_proof() {
         println!("✅ Present");
-        println!("     Proof data: {} bytes", receipt.zk_proof.as_ref().unwrap().len() / 2);
+        let proof = receipt.zk_proof.as_ref().unwrap();
+        println!("     Backend: {}", proof.backend_type);
+        println!("     Proof data: {} bytes", proof.proof_data.len());
     } else {
         println!("⚠️  None");
         println!("     No ZK proof attached to this receipt");
@@ -93,9 +95,13 @@ pub fn inspect_receipt_file(receipt_path: &str, verbose: bool) -> Result<()> {
         println!("\n🔬 Zero-Knowledge Proof:");
         println!("   Status: ✅ Present");
         let proof = receipt.zk_proof.as_ref().unwrap();
-        println!("   Size: {} bytes", proof.len() / 2);
+        println!("   Backend: {}", proof.backend_type);
+        println!("   Proof Size: {} bytes", proof.proof_data.len());
+        println!("   Public Inputs: {} bytes", proof.public_inputs.len());
+        println!("   Generation Time: {}ms", proof.metadata.generation_time_ms);
         if verbose {
-            println!("   Data (hex): {}...", &proof[..64.min(proof.len())]);
+            let proof_hex = hex::encode(&proof.proof_data);
+            println!("   Proof Data (hex): {}...", &proof_hex[..64.min(proof_hex.len())]);
         }
     } else {
         println!("\n🔬 Zero-Knowledge Proof:");

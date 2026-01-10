@@ -77,9 +77,9 @@ pub struct ExecutionReceipt {
     pub timestamp: String,
     /// Version of the receipt format
     pub version: String,
-    /// Optional zero-knowledge proof (hex-encoded bytes)
+    /// Optional zero-knowledge proof
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub zk_proof: Option<String>,
+    pub zk_proof: Option<ZkProof>,
 }
 
 impl ExecutionReceipt {
@@ -133,8 +133,8 @@ impl ExecutionReceipt {
     }
 
     /// Attach a zero-knowledge proof to this receipt
-    pub fn with_proof(mut self, proof: Vec<u8>) -> Self {
-        self.zk_proof = Some(hex::encode(proof));
+    pub fn with_proof(mut self, proof: ZkProof) -> Self {
+        self.zk_proof = Some(proof);
         self
     }
 

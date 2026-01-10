@@ -30,8 +30,16 @@ impl ConnectionPool {
     }
 
     /// Get or create a connection to a peer
+    ///
+    /// Uses double-checked locking to prevent race conditions:
+    /// - First check with read lock (fast path for existing connections)
+    /// - Create connection outside lock (expensive async operation)
+    /// - Second check with write lock (prevents duplicate connections)
+    ///
+    /// This ensures that even if multiple threads try to connect to the same
+    /// peer simultaneously, only one TCP connection is created and stored.
     pub async fn get_or_connect(&self, peer_addr: SocketAddr) -> Result<Arc<RwLock<PeerConnection>>> {
-        // Check if we already have a connection
+        // First check: read lock (fast path for existing connections)
         {
             let connections = self.connections.read().await;
             if let Some(conn) = connections.get(&peer_addr) {
@@ -40,14 +48,24 @@ impl ConnectionPool {
             }
         }
 
-        // Create new connection
+        // Create new connection outside of any lock (expensive operation)
+        // Note: Multiple threads may reach this point for the same peer
         info!("Creating new connection to {}", peer_addr);
         let (stream, peer_info) = transport::connect_to_peer(peer_addr, &self.local_node_info).await?;
         let peer_conn = PeerConnection::new(stream, peer_addr, peer_info);
         let peer_conn = Arc::new(RwLock::new(peer_conn));
 
-        // Store connection
+        // Second check: write lock (handle race condition)
         let mut connections = self.connections.write().await;
+
+        // Check again if another thread created a connection while we were connecting
+        // The second thread's connection is discarded (TCP socket will be dropped)
+        if let Some(existing_conn) = connections.get(&peer_addr) {
+            debug!("Another thread created connection to {} while we were connecting, using that one", peer_addr);
+            return Ok(existing_conn.clone());
+        }
+
+        // We're the first, insert our connection
         connections.insert(peer_addr, peer_conn.clone());
 
         Ok(peer_conn)
@@ -59,8 +77,15 @@ impl ConnectionPool {
         let peer_conn = Arc::new(RwLock::new(peer_conn));
 
         let mut connections = self.connections.write().await;
-        connections.insert(peer_addr, peer_conn);
-        info!("Added incoming connection from {}", peer_addr);
+
+        // Only insert if we don't already have a connection to this peer
+        // (prevents duplicate connections from simultaneous incoming/outgoing)
+        if !connections.contains_key(&peer_addr) {
+            connections.insert(peer_addr, peer_conn);
+            info!("Added incoming connection from {}", peer_addr);
+        } else {
+            debug!("Already have connection to {}, ignoring incoming connection", peer_addr);
+        }
     }
 
     /// Send a gossip message to a peer

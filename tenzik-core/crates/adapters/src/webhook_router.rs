@@ -426,7 +426,10 @@ mod tests {
 
         router.add_route(route_config).await.unwrap();
         assert_eq!(router.list_routes().await.len(), 1);
+    }
+}
 
+impl WebhookRouter {
     /// Get current router statistics
     pub async fn stats(&self) -> RouterStats {
         self.stats.read().await.clone()
@@ -601,33 +604,5 @@ mod tests {
         // In production, use reqwest or similar HTTP client
         tracing::info!("Would forward to {}: {:?}", url, payload);
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_webhook_router_creation() {
-        let config = WebhookConfig::default();
-        let router = WebhookRouter::new(config);
-        assert_eq!(router.config().port, 8080);
-    }
-
-    #[tokio::test]
-    async fn test_webhook_stats() {
-        let router = WebhookRouter::new(WebhookConfig::default());
-        let stats = router.stats().await;
-        assert_eq!(stats.total_webhooks, 0);
-    }
-
-    #[tokio::test]
-    async fn test_receipt_storage() {
-        let router = WebhookRouter::new(WebhookConfig::default());
-
-        // Initially empty
-        let receipts = router.list_receipts().await;
-        assert_eq!(receipts.len(), 0);
     }
 }
