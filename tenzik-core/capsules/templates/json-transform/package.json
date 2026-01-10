@@ -1,19 +1,24 @@
 {
-  "name": "json-transform-capsule",
+  "name": "tenzik-json-transform",
   "version": "0.1.0",
-  "description": "JSON transformation Tenzik capsule template",
+  "description": "JSON transformation capsule for Tenzik with verifiable execution",
+  "main": "capsule.ts",
   "scripts": {
-    "build": "asc capsule.ts --target release --outFile build/capsule.wasm --optimize --noAssert --runtime none",
-    "build:debug": "asc capsule.ts --target debug --outFile build/capsule.debug.wasm --sourceMap",
-    "optimize": "wasm-opt -Oz build/capsule.wasm -o build/capsule.wasm",
-    "size": "wc -c build/capsule.wasm",
-    "test": "echo 'Use: tenzik test build/capsule.wasm input.json'"
+    "build": "asc capsule.ts --outFile build/capsule.wasm --optimize --runtime stub --exportRuntime --memoryBase 0",
+    "build:optimized": "npm run build && wasm-opt build/capsule.wasm -Oz -o build/capsule.wasm",
+    "test": "node test.js"
   },
+  "keywords": [
+    "tenzik",
+    "wasm",
+    "json",
+    "transform",
+    "verifiable"
+  ],
+  "author": "Tenzik Core Contributors",
+  "license": "Apache-2.0",
   "devDependencies": {
-    "assemblyscript": "^0.27.0"
-  },
-  "files": [
-    "build/capsule.wasm",
-    "README.md"
-  ]
+    "assemblyscript": "^0.27.0",
+    "wasm-opt": "^1.3.0"
+  }
 }

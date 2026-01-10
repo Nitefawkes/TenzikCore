@@ -1,34 +1,22 @@
-# Rust
+# Rust build artifacts
 target/
-Cargo.lock
-**/*.rs.bk
-*.pdb
+**/target/
 
-# IDE
+# Cargo lock file (uncomment if this is a library)
+# Cargo.lock
+
+# IDE files
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+
+# OS files
 .DS_Store
+Thumbs.db
 
-# Testing
-*.profraw
-*.profdata
-
-# Node (for capsule templates)
-node_modules/
-dist/
-build/
-
-# Database files
-*.db
-*.sled
-node*_data/
-
-# Logs
-*.log
-
-# Environment
+# Local development
 .env
-.env.local
+.tenzik/
+*.log

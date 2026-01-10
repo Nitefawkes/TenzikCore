@@ -77,9 +77,9 @@ pub struct ExecutionReceipt {
     pub timestamp: String,
     /// Version of the receipt format
     pub version: String,
-    /// Optional ZK proof (can be added later via attach_proof)
+    /// Optional zero-knowledge proof (hex-encoded bytes)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub zk_proof: Option<ZkProof>,
+    pub zk_proof: Option<String>,
 }
 
 impl ExecutionReceipt {
@@ -132,15 +132,14 @@ impl ExecutionReceipt {
         })
     }
 
-    /// Attach a ZK proof to this receipt
-    ///
-    /// This can be done asynchronously after the receipt is created
-    pub fn attach_proof(&mut self, proof: ZkProof) {
-        self.zk_proof = Some(proof);
+    /// Attach a zero-knowledge proof to this receipt
+    pub fn with_proof(mut self, proof: Vec<u8>) -> Self {
+        self.zk_proof = Some(hex::encode(proof));
+        self
     }
 
     /// Check if this receipt has a ZK proof attached
-    pub fn has_zk_proof(&self) -> bool {
+    pub fn has_proof(&self) -> bool {
         self.zk_proof.is_some()
     }
     
@@ -163,7 +162,7 @@ impl ExecutionReceipt {
                 reason: format!("Invalid signature hex: {}", e)
             })?;
 
-        // Convert Vec<u8> to [u8; 64] array
+        // Convert Vec<u8> to [u8; 64]
         let signature_array: [u8; 64] = signature_bytes
             .try_into()
             .map_err(|_| ReceiptError::InvalidFormat {
@@ -278,6 +277,9 @@ impl ExecutionReceipt {
 }
 
 /// Receipt verification utilities
+///
+/// This verifies signatures and age. ZK proof verification should be done
+/// at a higher level using the tenzik-zk crate's ProofBackend.
 pub struct ReceiptVerifier {
     /// Maximum age for receipts to be considered valid (in seconds)
     pub max_receipt_age_seconds: u64,
@@ -298,8 +300,11 @@ impl ReceiptVerifier {
             max_receipt_age_seconds,
         }
     }
-    
-    /// Verify a receipt completely (signature + age)
+
+    /// Verify a receipt's signature and age
+    ///
+    /// Note: This does NOT verify ZK proofs. For ZK proof verification,
+    /// use the tenzik-zk crate's ProofBackend::verify_proof method.
     pub fn verify_receipt(&self, receipt: &ExecutionReceipt) -> Result<bool, ReceiptError> {
         // Check signature
         if !receipt.verify_node_signature()? {
@@ -365,9 +370,9 @@ impl ReceiptVerifier {
 #[cfg(test)]
 pub fn generate_test_signing_key() -> SigningKey {
     use rand::RngCore;
-    let mut rng = rand::rngs::OsRng;
+    use rand::rngs::OsRng;
     let mut secret_bytes = [0u8; 32];
-    rng.fill_bytes(&mut secret_bytes);
+    OsRng.fill_bytes(&mut secret_bytes);
     SigningKey::from_bytes(&secret_bytes)
 }
 

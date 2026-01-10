@@ -258,10 +258,11 @@ impl Event {
                 reason: "Invalid signature hex".to_string(),
             })?;
 
+        // Convert Vec<u8> to [u8; 64]
         let signature_array: [u8; 64] = signature_bytes
             .try_into()
             .map_err(|_| ProtocolError::InvalidFormat {
-                reason: "Signature must be exactly 64 bytes".to_string(),
+                reason: "Signature must be exactly 64 bytes".to_string()
             })?;
 
         let signature = Signature::from_bytes(&signature_array);

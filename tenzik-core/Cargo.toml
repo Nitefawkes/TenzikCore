@@ -1,8 +1,10 @@
 [workspace]
+resolver = "2"
 members = [
     "crates/runtime",
-    "crates/protocol", 
+    "crates/protocol",
     "crates/federation",
+    "crates/zk",
     "crates/cli",
     "crates/adapters"
 ]
@@ -21,7 +23,6 @@ serde_json = "1.0"
 anyhow = "1.0"
 thiserror = "1.0"
 async-trait = "0.1"
-uuid = { version = "1.0", features = ["v4"] }
 
 # WASM runtime
 wasmtime = { version = "26.0", features = ["async"] }

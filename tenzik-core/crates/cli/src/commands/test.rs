@@ -194,8 +194,11 @@ pub fn validate_capsule_file(capsule_path: &str) -> Result<()> {
 
 /// Generate a test signing key for development
 fn generate_test_signing_key() -> ed25519_dalek::SigningKey {
-    use rand::rngs::OsRng;
-    ed25519_dalek::SigningKey::generate(&mut OsRng)
+    use rand::RngCore;
+    let mut csprng = rand::rngs::OsRng;
+    let mut secret_bytes = [0u8; 32];
+    csprng.fill_bytes(&mut secret_bytes);
+    ed25519_dalek::SigningKey::from_bytes(&secret_bytes)
 }
 
 #[cfg(test)]

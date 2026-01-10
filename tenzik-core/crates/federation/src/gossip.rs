@@ -9,9 +9,11 @@ use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::time::Duration;
 use tokio::time::{interval, Instant};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
+use crate::connection_pool::ConnectionPool;
 use crate::storage::EventDAG;
+use std::sync::Arc;
 use tenzik_protocol::Event;
 
 /// Information about a peer for gossip
@@ -127,17 +129,20 @@ pub struct GossipProtocol {
     stats: GossipStats,
     /// Active sync operations
     active_syncs: HashSet<SocketAddr>,
+    /// Connection pool for network operations
+    connection_pool: Arc<ConnectionPool>,
 }
 
 impl GossipProtocol {
     /// Create a new gossip protocol instance
-    pub fn new(config: GossipConfig, dag: EventDAG) -> Self {
+    pub fn new(config: GossipConfig, dag: EventDAG, connection_pool: Arc<ConnectionPool>) -> Self {
         Self {
             config,
             peers: HashMap::new(),
             dag,
             stats: GossipStats::default(),
             active_syncs: HashSet::new(),
+            connection_pool,
         }
     }
 
@@ -254,13 +259,19 @@ impl GossipProtocol {
             .collect();
 
         if !events_to_send.is_empty() {
-            // TODO: Send events to peer via network
-            // For now, just simulate sending
             debug!(
                 "Sending {} events to peer {}",
                 events_to_send.len(),
                 peer_addr
             );
+
+            // Send events to peer via network
+            let message = GossipMessage::Events {
+                events: events_to_send.clone(),
+                has_more: false,
+            };
+
+            self.connection_pool.send_message(peer_addr, message).await?;
 
             // Update statistics
             self.stats.events_sent += events_to_send.len() as u64;
@@ -269,8 +280,26 @@ impl GossipProtocol {
             }
         }
 
-        // TODO: Request events from peer
-        // TODO: Handle peer's response
+        // Request events from peer
+        let sync_message = GossipMessage::Sync {
+            since: None,
+            limit: self.config.max_events_per_sync,
+        };
+
+        self.connection_pool.send_message(peer_addr, sync_message).await?;
+
+        // Receive and handle peer's response
+        match self.connection_pool.receive_message(peer_addr).await {
+            Ok(response) => {
+                if let Some(reply) = self.handle_message(peer_addr, response).await? {
+                    // Send reply if handler generated one
+                    self.connection_pool.send_message(peer_addr, reply).await?;
+                }
+            }
+            Err(e) => {
+                warn!("Failed to receive response from {}: {}", peer_addr, e);
+            }
+        }
 
         // Update latency statistics
         let latency = start_time.elapsed().as_millis() as f64;
@@ -291,10 +320,23 @@ impl GossipProtocol {
             .unwrap_or_default()
             .as_millis() as u64;
 
-        for (peer_addr, peer) in &mut self.peers {
-            if peer.is_reachable {
-                // TODO: Send ping message via network
-                debug!("Pinging peer: {}", peer_addr);
+        let reachable_peers: Vec<SocketAddr> = self
+            .peers
+            .iter()
+            .filter(|(_, peer)| peer.is_reachable)
+            .map(|(addr, _)| *addr)
+            .collect();
+
+        for peer_addr in reachable_peers {
+            debug!("Pinging peer: {}", peer_addr);
+
+            let ping_message = GossipMessage::Ping { timestamp };
+
+            if let Err(e) = self.connection_pool.send_message(peer_addr, ping_message).await {
+                warn!("Failed to ping peer {}: {}", peer_addr, e);
+                if let Some(peer) = self.peers.get_mut(&peer_addr) {
+                    peer.is_reachable = false;
+                }
             }
         }
     }
@@ -405,8 +447,20 @@ impl GossipProtocol {
             rejected.len()
         );
 
-        // TODO: Update internal state based on ack
-        // TODO: Handle rejected events (maybe retry or log)
+        // Update peer statistics
+        if let Some(peer) = self.peers.get_mut(&from) {
+            peer.last_sync = Some(Instant::now());
+        }
+
+        // Log rejected events for monitoring
+        if !rejected.is_empty() {
+            info!(
+                "Peer {} rejected {} events: {:?}",
+                from,
+                rejected.len(),
+                rejected
+            );
+        }
 
         Ok(None)
     }
@@ -484,9 +538,20 @@ mod tests {
 
     #[test]
     fn test_peer_management() {
+        use tenzik_protocol::NodeInfo;
+
         let temp_dir = TempDir::new().unwrap();
         let dag = EventDAG::new(temp_dir.path()).unwrap();
-        let mut gossip = GossipProtocol::new(GossipConfig::default(), dag);
+
+        let node_info = NodeInfo {
+            public_key: "test_key".to_string(),
+            address: "127.0.0.1:9000".to_string(),
+            name: "test_node".to_string(),
+            version: "0.1.0".to_string(),
+        };
+
+        let connection_pool = Arc::new(ConnectionPool::new(node_info));
+        let mut gossip = GossipProtocol::new(GossipConfig::default(), dag, connection_pool);
 
         let peer_addr = "127.0.0.1:9001".parse().unwrap();
         let public_key = "test_key".to_string();
@@ -502,9 +567,20 @@ mod tests {
 
     #[tokio::test]
     async fn test_ping_pong() {
+        use tenzik_protocol::NodeInfo;
+
         let temp_dir = TempDir::new().unwrap();
         let dag = EventDAG::new(temp_dir.path()).unwrap();
-        let mut gossip = GossipProtocol::new(GossipConfig::default(), dag);
+
+        let node_info = NodeInfo {
+            public_key: "test_key".to_string(),
+            address: "127.0.0.1:9000".to_string(),
+            name: "test_node".to_string(),
+            version: "0.1.0".to_string(),
+        };
+
+        let connection_pool = Arc::new(ConnectionPool::new(node_info));
+        let mut gossip = GossipProtocol::new(GossipConfig::default(), dag, connection_pool);
 
         let peer_addr = "127.0.0.1:9001".parse().unwrap();
         let timestamp = 12345;

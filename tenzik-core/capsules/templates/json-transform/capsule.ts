@@ -1,8 +1,6 @@
 // JSON Transform Capsule Template
-// Target: 3-5KB WASM when compiled with -Oz
-
-// Demonstrates JSON transformation and path extraction
-// Use case: Webhook payload transformation, data mapping, field extraction
+// Target: <4KB WASM when compiled with -Oz
+// Demonstrates: Field selection, renaming, transformations
 
 export function run(input_ptr: i32, input_len: i32): i32 {
     // Read input from WASM memory
@@ -11,18 +9,18 @@ export function run(input_ptr: i32, input_len: i32): i32 {
         input_bytes[i] = load<u8>(input_ptr + i);
     }
 
-    // Convert to string
+    // Parse JSON input (simple parser for demo)
     const input_str = String.fromCharCode.apply(null, Array.from(input_bytes));
 
-    // Extract fields from input JSON
-    // Example input: {"user": {"name": "Alice", "age": 30}, "action": "login", "timestamp": 1234567890}
-    const user_name = extractJsonValue(input_str, "user.name");
-    const action = extractJsonValue(input_str, "action");
-    const timestamp = extractJsonValue(input_str, "timestamp");
+    // Extract data and transform sections
+    const data = extractSection(input_str, "data");
+    const transform = extractSection(input_str, "transform");
 
-    // Transform data - create a new structure
-    // Example: Convert user login event to notification format
-    const output = buildJsonOutput(user_name, action, timestamp);
+    // Apply transformations
+    const result = applyTransform(data, transform);
+
+    // Create output with metadata
+    const output = createOutput(result);
 
     // Convert to bytes
     const output_bytes = new Uint8Array(output.length);
@@ -30,7 +28,7 @@ export function run(input_ptr: i32, input_len: i32): i32 {
         output_bytes[i] = output.charCodeAt(i);
     }
 
-    // Store in WASM memory and return pointer
+    // Allocate output in memory
     const output_ptr = heap.alloc(output_bytes.length);
     for (let i = 0; i < output_bytes.length; i++) {
         store<u8>(output_ptr + i, output_bytes[i]);
@@ -40,86 +38,213 @@ export function run(input_ptr: i32, input_len: i32): i32 {
     return (output_bytes.length << 16) | output_ptr;
 }
 
-// Extract JSON value using simple path notation (e.g., "user.name")
-function extractJsonValue(json: string, path: string): string {
-    // Split path into parts
-    const parts = path.split('.');
+function extractSection(input: string, section: string): string {
+    const pattern = `"${section}"`;
+    const start = input.indexOf(pattern);
+    if (start === -1) return "{}";
 
-    if (parts.length === 1) {
-        // Simple field extraction
-        return extractSimpleField(json, parts[0]);
-    } else if (parts.length === 2) {
-        // Nested object.field extraction
-        const objValue = extractSimpleField(json, parts[0]);
-        if (objValue === "null") return "null";
-        return extractSimpleField(objValue, parts[1]);
+    const colonIdx = input.indexOf(':', start);
+    const braceIdx = input.indexOf('{', colonIdx);
+
+    if (braceIdx === -1) return "{}";
+
+    // Find matching closing brace
+    let depth = 1;
+    let i = braceIdx + 1;
+    while (i < input.length && depth > 0) {
+        if (input.charAt(i) === '{') depth++;
+        if (input.charAt(i) === '}') depth--;
+        i++;
     }
 
-    return "null";
+    return input.substring(braceIdx, i);
 }
 
-// Extract a simple field from JSON string
-// Handles both string values ("field": "value") and numeric values ("field": 123)
-function extractSimpleField(json: string, field: string): string {
-    const pattern = `"${field}"`;
+function applyTransform(data: string, transform: string): string {
+    // Extract select fields
+    const selectFields = extractArray(transform, "select");
+
+    // Extract rename mappings
+    const renameMap = extractObject(transform, "rename");
+
+    // Extract operations
+    const operations = extractObject(transform, "operations");
+
+    // Build result object
+    let result = "{";
+    let fieldCount = 0;
+
+    for (let i = 0; i < selectFields.length; i++) {
+        const field = selectFields[i];
+        const value = extractFieldValue(data, field);
+
+        if (value !== "") {
+            if (fieldCount > 0) result += ",";
+
+            // Apply rename if exists
+            let outputField = field;
+            if (renameMap.has(field)) {
+                outputField = renameMap.get(field);
+            }
+
+            // Apply operation if exists
+            let outputValue = value;
+            if (operations.has(outputField)) {
+                const op = operations.get(outputField);
+                outputValue = applyOperation(value, op);
+            }
+
+            result += `"${outputField}":"${outputValue}"`;
+            fieldCount++;
+        }
+    }
+
+    result += "}";
+    return result;
+}
+
+function extractArray(json: string, key: string): string[] {
+    const pattern = `"${key}"`;
     const start = json.indexOf(pattern);
-    if (start === -1) return "null";
+    if (start === -1) return [];
 
     const colonIdx = json.indexOf(':', start);
-    if (colonIdx === -1) return "null";
+    const bracketIdx = json.indexOf('[', colonIdx);
+    if (bracketIdx === -1) return [];
 
-    // Skip whitespace after colon
-    let valueStart = colonIdx + 1;
-    while (valueStart < json.length && (json.charAt(valueStart) === ' ' || json.charAt(valueStart) === '\t')) {
-        valueStart++;
+    const closeBracket = json.indexOf(']', bracketIdx);
+    const arrayStr = json.substring(bracketIdx + 1, closeBracket);
+
+    const result: string[] = [];
+    let current = "";
+    let inQuote = false;
+
+    for (let i = 0; i < arrayStr.length; i++) {
+        const char = arrayStr.charAt(i);
+        if (char === '"') {
+            inQuote = !inQuote;
+        } else if (char === ',' && !inQuote) {
+            if (current.trim() !== "") {
+                result.push(current.trim());
+            }
+            current = "";
+        } else if (inQuote) {
+            current += char;
+        }
     }
 
-    const firstChar = json.charAt(valueStart);
-
-    if (firstChar === '"') {
-        // String value
-        const quote2 = json.indexOf('"', valueStart + 1);
-        if (quote2 === -1) return "null";
-        return json.substring(valueStart + 1, quote2);
-    } else if (firstChar === '{') {
-        // Object value - find matching closing brace
-        let braceCount = 0;
-        let i = valueStart;
-        while (i < json.length) {
-            if (json.charAt(i) === '{') braceCount++;
-            if (json.charAt(i) === '}') {
-                braceCount--;
-                if (braceCount === 0) {
-                    return json.substring(valueStart, i + 1);
-                }
-            }
-            i++;
-        }
-        return "null";
-    } else {
-        // Numeric or boolean value - read until comma, brace, or bracket
-        let i = valueStart;
-        while (i < json.length) {
-            const ch = json.charAt(i);
-            if (ch === ',' || ch === '}' || ch === ']' || ch === ' ' || ch === '\t' || ch === '\n') {
-                return json.substring(valueStart, i).trim();
-            }
-            i++;
-        }
-        return json.substring(valueStart).trim();
+    if (current.trim() !== "") {
+        result.push(current.trim());
     }
+
+    return result;
 }
 
-// Build output JSON
-function buildJsonOutput(userName: string, action: string, timestamp: string): string {
-    // Create transformed output structure
-    // Original: login event
-    // Transformed: notification event with enriched data
+function extractObject(json: string, key: string): Map<string, string> {
+    const result = new Map<string, string>();
+    const pattern = `"${key}"`;
+    const start = json.indexOf(pattern);
+    if (start === -1) return result;
 
-    const message = `User ${userName} performed ${action}`;
-    const severity = action === "login" ? "info" : "warning";
+    const colonIdx = json.indexOf(':', start);
+    const braceIdx = json.indexOf('{', colonIdx);
+    if (braceIdx === -1) return result;
 
-    return `{"event":"notification","message":"${message}","user":"${userName}","action":"${action}","severity":"${severity}","timestamp":${timestamp},"processed_by":"json-transform-capsule"}`;
+    // Find matching closing brace
+    let depth = 1;
+    let i = braceIdx + 1;
+    while (i < json.length && depth > 0) {
+        if (json.charAt(i) === '{') depth++;
+        if (json.charAt(i) === '}') depth--;
+        i++;
+    }
+
+    const objStr = json.substring(braceIdx + 1, i - 1);
+
+    // Parse key-value pairs
+    let currentKey = "";
+    let currentValue = "";
+    let inKey = false;
+    let inValue = false;
+
+    for (let j = 0; j < objStr.length; j++) {
+        const char = objStr.charAt(j);
+
+        if (char === '"' && !inValue) {
+            inKey = !inKey;
+        } else if (char === ':' && inKey) {
+            inKey = false;
+            // Skip to next quote
+            j++;
+            while (j < objStr.length && objStr.charAt(j) !== '"') j++;
+            inValue = true;
+        } else if (char === '"' && inValue) {
+            result.set(currentKey.trim(), currentValue.trim());
+            currentKey = "";
+            currentValue = "";
+            inValue = false;
+        } else if (inKey) {
+            currentKey += char;
+        } else if (inValue) {
+            currentValue += char;
+        }
+    }
+
+    return result;
+}
+
+function extractFieldValue(data: string, field: string): string {
+    // Handle nested fields (e.g., "user.profile.name")
+    const parts = field.split('.');
+    let current = data;
+
+    for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+        const pattern = `"${part}"`;
+        const start = current.indexOf(pattern);
+
+        if (start === -1) return "";
+
+        const colonIdx = current.indexOf(':', start);
+        const nextChar = current.charAt(colonIdx + 1);
+
+        if (nextChar === '{') {
+            // It's an object, continue nesting
+            const braceIdx = colonIdx + 1;
+            let depth = 1;
+            let j = braceIdx + 1;
+            while (j < current.length && depth > 0) {
+                if (current.charAt(j) === '{') depth++;
+                if (current.charAt(j) === '}') depth--;
+                j++;
+            }
+            current = current.substring(braceIdx, j);
+        } else {
+            // It's a value
+            const quote1 = current.indexOf('"', colonIdx);
+            if (quote1 === -1) return "";
+            const quote2 = current.indexOf('"', quote1 + 1);
+            if (quote2 === -1) return "";
+            return current.substring(quote1 + 1, quote2);
+        }
+    }
+
+    return "";
+}
+
+function applyOperation(value: string, operation: string): string {
+    if (operation === "uppercase") {
+        return value.toUpperCase();
+    } else if (operation === "lowercase") {
+        return value.toLowerCase();
+    } else if (operation === "truncate_10") {
+        return value.length > 10 ? value.substring(0, 10) : value;
+    }
+    return value;
+}
+
+function createOutput(result: string): string {
+    return `{"result":${result},"metadata":{"capsule":"json-transform","timestamp":"2024-12-01"}}`;
 }
 
 // Export memory for host to access

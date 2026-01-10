@@ -1,5 +1,61 @@
 # JSON Transform Capsule
 
+A versatile Tenzik capsule for transforming JSON data with verifiable execution receipts.
+
+## Features
+
+- **Field Filtering**: Select specific fields from input JSON
+- **Field Mapping**: Rename and transform fields
+- **Value Transformation**: Apply simple transformations (uppercase, lowercase, truncate)
+- **Deterministic**: Guaranteed reproducible results
+- **Verifiable**: Every transformation gets a cryptographic receipt
+- **Lightweight**: Target <4KB WASM
+
+## Use Cases
+
+- **Webhook Routing**: Transform incoming webhook payloads before forwarding
+- **API Adaptation**: Convert between different API formats
+- **Data Sanitization**: Filter sensitive fields before logging
+- **ETL Pipelines**: Transform data during ingestion
+
+## Input Format
+
+```json
+{
+  "data": {
+    "field1": "value1",
+    "field2": "value2",
+    "nested": {
+      "field3": "value3"
+    }
+  },
+  "transform": {
+    "select": ["field1", "nested.field3"],
+    "rename": {
+      "field1": "name"
+    },
+    "operations": {
+      "name": "uppercase"
+    }
+  }
+}
+```
+
+## Output Format
+
+```json
+{
+  "result": {
+    "name": "VALUE1",
+    "field3": "value3"
+  },
+  "metadata": {
+    "capsule": "json-transform",
+    "fields_processed": 2,
+    "timestamp": "2024-12-01"
+  }
+}
+```
 A Tenzik capsule template demonstrating JSON transformation and field extraction using path notation.
 
 ## Features
@@ -25,131 +81,107 @@ npm install
 npm run build
 ```
 
-This produces `build/capsule.wasm` ready for testing.
+This produces `build/capsule.wasm` optimized for size.
 
-## Test
+## Test with Tenzik CLI
 
 ```bash
-# Example 1: User login event transformation
+# Basic field selection
 tenzik test build/capsule.wasm '{
-  "user": {"name": "Alice", "age": 30},
-  "action": "login",
-  "timestamp": 1234567890
+  "data": {"name": "Alice", "age": 30, "email": "alice@example.com"},
+  "transform": {"select": ["name", "age"]}
 }'
 
-# Expected output:
-# {
-#   "event": "notification",
-#   "message": "User Alice performed login",
-#   "user": "Alice",
-#   "action": "login",
-#   "severity": "info",
-#   "timestamp": 1234567890,
-#   "processed_by": "json-transform-capsule"
-# }
-
-# Example 2: Different action
+# Field renaming and transformation
 tenzik test build/capsule.wasm '{
-  "user": {"name": "Bob", "age": 25},
-  "action": "logout",
-  "timestamp": 1234567900
+  "data": {"user_name": "bob", "user_email": "bob@example.com"},
+  "transform": {
+    "select": ["user_name", "user_email"],
+    "rename": {"user_name": "name", "user_email": "email"},
+    "operations": {"name": "uppercase"}
+  }
 }'
 
-# Expected output:
-# {
-#   "event": "notification",
-#   "message": "User Bob performed logout",
-#   "user": "Bob",
-#   "action": "logout",
-#   "severity": "warning",
-#   "timestamp": 1234567900,
-#   "processed_by": "json-transform-capsule"
-# }
+# Nested field access
+tenzik test build/capsule.wasm '{
+  "data": {
+    "user": {
+      "profile": {
+        "name": "Charlie"
+      }
+    }
+  },
+  "transform": {"select": ["user.profile.name"]}
+}'
 ```
 
-## Implementation Details
+## Transform Operations
 
-### JSON Path Extraction
+### Selection
+- Select specific fields: `{"select": ["field1", "field2"]}`
+- Select nested fields: `{"select": ["parent.child.field"]}`
 
-The capsule implements simple JSON path extraction:
+### Renaming
+- Rename fields: `{"rename": {"old_name": "new_name"}}`
 
-- `"fieldName"` - Extract top-level field
-- `"object.field"` - Extract nested field from object
+### Operations
+- `uppercase`: Convert string to uppercase
+- `lowercase`: Convert string to lowercase
+- `truncate_10`: Truncate string to 10 characters
+- `hash`: Replace value with Blake3 hash (when host function available)
 
-Examples:
-```typescript
-extractJsonValue(json, "action")        // → "login"
-extractJsonValue(json, "user.name")     // → "Alice"
-extractJsonValue(json, "timestamp")     // → "1234567890"
-```
+## Verifiable Execution
 
-### Value Type Handling
+Every transformation produces a cryptographic receipt containing:
+- Blake3 hash of input JSON
+- Blake3 hash of output JSON
+- Ed25519 signature from executing node
+- Execution metrics (fuel used, memory, duration)
+- Optional zero-knowledge proof
 
-The extractor handles multiple JSON value types:
-- **Strings**: `"field": "value"` → returns `value`
-- **Numbers**: `"field": 123` → returns `123`
-- **Objects**: `"field": {...}` → returns the complete object JSON
-- **Null/Missing**: Returns `"null"` for missing fields
-
-### Transformation Logic
-
-The template demonstrates a common transformation pattern:
-
-1. **Extract** relevant fields from input
-2. **Enrich** with computed values (e.g., severity based on action)
-3. **Reshape** into target format
-4. **Add metadata** (e.g., processed_by field)
-
-## Customization
-
-To adapt this template for your use case:
-
-1. **Modify field extraction**: Update the field names in the `run()` function
-2. **Change transformation logic**: Edit `buildJsonOutput()` to create your desired output structure
-3. **Add validation**: Insert checks for required fields
-4. **Extend path syntax**: Add support for arrays, deeper nesting, etc.
-
-## Size Optimization
-
-Techniques used to stay under 3-5KB:
-
-- **No external JSON library**: Custom lightweight parsers
-- **Simple string operations**: Avoid complex regex or parsing
-- **Minimal allocations**: Reuse buffers where possible
-- **No runtime**: Compiled with `--runtime none`
-
-## Host Functions (Future)
-
-This template could leverage host-provided functions for better performance:
-
-- `json_path(bytes, path)` - Native JSON extraction with full JSONPath support
-- `hash_commit(bytes)` - For data integrity verification
-- `base64_encode(bytes)` - For encoding binary data in output
-
-Currently uses native implementations for maximum portability.
+This enables:
+- **Auditability**: Prove a transformation occurred
+- **Reproducibility**: Re-execute and verify same output
+- **Compliance**: Meet regulatory requirements for data processing
 
 ## Integration Example
 
-Use with webhook router:
-
 ```rust
-// Add route with JSON transform capsule
-router.add_route(RouteConfig {
-    path: "/webhook/github",
-    capsule_bytes: fs::read("json-transform/build/capsule.wasm")?,
-    resource_limits: ResourceLimits::default(),
-    enable_zk_proofs: true,
-    description: "Transform GitHub webhooks to internal notification format".to_string(),
-}).await?;
+use tenzik_runtime::WasmExecutor;
+use tenzik_federation::TenzikNode;
 
-// POST /webhook/github with GitHub payload
-// → Capsule transforms to internal format
-// → Returns receipt + optional ZK proof
+// Load and execute transform capsule
+let executor = WasmExecutor::new()?;
+let input = r#"{
+    "data": {"sensitive_field": "secret", "public_field": "visible"},
+    "transform": {"select": ["public_field"]}
+}"#;
+
+let (output, receipt) = executor.execute_with_receipt("transform.wasm", input)?;
+
+// Receipt proves the transformation happened
+println!("Receipt ID: {}", receipt.receipt_id());
+println!("Output: {}", output);
+
+// Optionally broadcast to federation
+node.add_receipt(receipt).await?;
 ```
 
-## Next Steps
+## Size Optimization
 
-- Add support for array indexing (`items[0]`)
-- Implement filtering logic (e.g., only process certain actions)
-- Add field validation and error messages
-- Support multiple transformation rules
+Techniques to stay under 4KB:
+- No JSON parser library (custom simple parser)
+- Minimal string operations
+- No complex data structures
+- Inline simple functions
+
+## Security Considerations
+
+- **Determinism**: Pure function, no random values or timestamps in output
+- **No External Calls**: Capsule cannot make network requests
+- **Resource Limits**: Bounded by fuel and memory limits
+- **Input Validation**: Malformed JSON returns error, not crash
+
+## License
+
+Apache-2.0

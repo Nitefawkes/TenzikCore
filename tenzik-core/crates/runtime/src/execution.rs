@@ -13,7 +13,9 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use thiserror::Error;
 use tokio::time::timeout;
-use wasmtime::{Config, Engine, Linker, Module, Store, TypedFunc};
+use wasmtime::{
+    Config, Engine, Linker, Module, Store, TypedFunc,
+};
 
 /// Maximum input/output size in bytes (1MB)
 const MAX_IO_SIZE: usize = 1024 * 1024;
@@ -92,7 +94,7 @@ impl HostFunctions {
     }
 
     /// Blake3 hash commit function
-    fn hash_commit(&self, mut caller: wasmtime::Caller<'_, ()>, ptr: i32, len: i32) -> i32 {
+    fn hash_commit(&self, caller: wasmtime::Caller<'_, ()>, ptr: i32, len: i32) -> i32 {
         // Implementation would read from WASM memory, compute hash, write back
         // For now, return success (0)
         0
@@ -101,7 +103,7 @@ impl HostFunctions {
     /// JSON path extraction function
     fn json_path(
         &self,
-        mut caller: wasmtime::Caller<'_, ()>,
+        caller: wasmtime::Caller<'_, ()>,
         data_ptr: i32,
         data_len: i32,
         path_ptr: i32,
@@ -113,14 +115,14 @@ impl HostFunctions {
     }
 
     /// Base64 encoding function
-    fn base64_encode(&self, mut caller: wasmtime::Caller<'_, ()>, ptr: i32, len: i32) -> i32 {
+    fn base64_encode(&self, caller: wasmtime::Caller<'_, ()>, ptr: i32, len: i32) -> i32 {
         // Implementation would base64 encode and return result
         // For now, return success (0)
         0
     }
 
     /// Get current timestamp in milliseconds
-    fn time_now_ms(&self, mut caller: wasmtime::Caller<'_, ()>) -> i64 {
+    fn time_now_ms(&self, caller: wasmtime::Caller<'_, ()>) -> i64 {
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -128,7 +130,7 @@ impl HostFunctions {
     }
 
     /// Generate random bytes
-    fn random_bytes(&self, mut caller: wasmtime::Caller<'_, ()>, ptr: i32, len: i32) -> i32 {
+    fn random_bytes(&self, caller: wasmtime::Caller<'_, ()>, ptr: i32, len: i32) -> i32 {
         // Implementation would generate deterministic random bytes
         // For now, return success (0)
         0
@@ -208,8 +210,9 @@ impl WasmRuntime {
             })?;
 
         if !validation_result.is_valid {
+            let first_error = &validation_result.errors[0];
             return Err(ExecutionError::ValidationFailed {
-                source: validation_result.errors[0].clone(),
+                source: first_error.clone(),
             });
         }
 
@@ -268,9 +271,12 @@ impl WasmRuntime {
         // Create store
         let mut store = Store::new(&self.engine, ());
 
-        // Note: Fuel metering in wasmtime 26.0 requires configuration at Engine creation time
-        // For now, we track execution time instead of fuel units
-        // TODO: Refactor to use wasmtime::Store::set_fuel() in newer versions
+        // TODO: Re-enable fuel metering with updated wasmtime API
+        // The wasmtime API for fuel has changed in newer versions
+        // For now, we'll skip fuel metering to get the federation layer working
+
+        // TODO: Set memory limits with updated wasmtime API
+        // The ResourceLimiter API has changed in newer wasmtime versions
 
         // Create linker with host functions
         let mut linker = Linker::new(&self.engine);
@@ -386,9 +392,9 @@ impl WasmRuntime {
 
         // Collect execution metrics
         let duration = start_time.elapsed();
-        // Note: Fuel tracking disabled in wasmtime 26.0 due to API changes
-        // Using duration as a proxy for computational cost
-        let fuel_used = duration.as_micros() as u64;
+
+        // TODO: Re-enable fuel tracking with updated wasmtime API
+        let fuel_used = 0;
 
         let metrics = ExecMetrics {
             fuel_used,
