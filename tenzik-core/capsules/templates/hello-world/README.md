@@ -21,7 +21,7 @@ This produces `build/capsule.wasm` ready for testing.
 ## Test
 
 ```bash
-# With tenzik CLI (once implemented)
+# With tenzik CLI
 tenzik test build/capsule.wasm '{"name": "Alice"}'
 
 # Expected output:

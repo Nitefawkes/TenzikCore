@@ -138,6 +138,294 @@ impl WebhookRouter {
     pub fn config(&self) -> &WebhookConfig {
         &self.config
     }
+}
+
+/// Health check endpoint
+async fn health_check() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "status": "ok",
+        "service": "tenzik-webhook-router"
+    }))
+}
+
+/// List routes endpoint
+async fn list_routes_handler(
+    State(router): State<Arc<WebhookRouter>>,
+) -> impl IntoResponse {
+    let state = router.state.read().await;
+    let routes: Vec<_> = state.routes.iter().map(|(path, config)| {
+        serde_json::json!({
+            "path": path,
+            "description": config.description,
+            "zk_enabled": config.enable_zk_proofs,
+        })
+    }).collect();
+
+    Json(serde_json::json!({
+        "routes": routes
+    }))
+}
+
+/// Webhook execution endpoint
+async fn webhook_handler(
+    Path(route): Path<String>,
+    State(router): State<Arc<WebhookRouter>>,
+    Json(request): Json<WebhookRequest>,
+) -> Response {
+    // Get route config
+    let route_path = format!("/{}", route);
+    let (capsule_bytes, resource_limits, enable_zk) = {
+        let state = router.state.read().await;
+        let route_config = match state.routes.get(&route_path) {
+            Some(config) => config,
+            None => {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(serde_json::json!({
+                        "error": format!("Route not found: {}", route_path)
+                    }))
+                ).into_response();
+            }
+        };
+
+        (
+            route_config.capsule_bytes.clone(),
+            route_config.resource_limits.clone(),
+            route_config.enable_zk_proofs
+        )
+    };
+
+    // Convert payload to bytes
+    let input_bytes = match serde_json::to_vec(&request.payload) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": format!("Invalid payload: {}", e)
+                }))
+            ).into_response();
+        }
+    };
+
+    // Execute capsule
+    let execution_result = {
+        let mut state = router.state.write().await;
+        state.runtime.execute(&capsule_bytes, &input_bytes, resource_limits).await
+    };
+
+    let mut execution_result = match execution_result {
+        Ok(result) => result,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({
+                    "error": format!("Execution failed: {}", e)
+                }))
+            ).into_response();
+        }
+    };
+
+    // Handle ZK proof generation
+    let (proof, proof_job_id) = if enable_zk && router.config.enable_zk_proofs {
+        let state = router.state.read().await;
+        if let Some(ref proof_queue) = state.proof_queue {
+            match proof_queue.submit_job(execution_result.receipt.clone()).await {
+                Ok(job_id) => {
+                    // If wait_for_proof is true, wait for completion
+                    if request.wait_for_proof {
+                        // Wait up to 30 seconds for proof
+                        let mut attempts = 0;
+                        loop {
+                            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                            if let Ok(status) = proof_queue.get_job_status(&job_id).await {
+                                if status == tenzik_runtime::JobStatus::Completed {
+                                    let proof = proof_queue.get_proof(&job_id).await.ok().flatten();
+                                    // Attach proof to receipt
+                                    if let Some(ref p) = proof {
+                                        execution_result.receipt.attach_proof(p.clone());
+                                    }
+                                    break (proof, None);
+                                } else if status == tenzik_runtime::JobStatus::Failed {
+                                    break (None, Some(job_id));
+                                }
+                            }
+
+                            attempts += 1;
+                            if attempts > 300 {
+ // 30 seconds
+                                break (None, Some(job_id));
+                            }
+                        }
+                    } else {
+                        (None, Some(job_id))
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to submit proof job: {}", e);
+                    (None, None)
+                }
+            }
+        } else {
+            (None, None)
+        }
+    } else {
+        (None, None)
+    };
+
+    // Convert output to string
+    let output = String::from_utf8_lossy(&execution_result.output).to_string();
+
+    let response = WebhookResponse {
+        success: true,
+        output: Some(output),
+        receipt: execution_result.receipt,
+        proof,
+        proof_job_id,
+        error: None,
+    };
+
+    (StatusCode::OK, Json(response)).into_response()
+}
+
+/// Get proof status endpoint
+async fn get_proof_handler(
+    Path(job_id): Path<String>,
+    State(router): State<Arc<WebhookRouter>>,
+) -> Response {
+    let state = router.state.read().await;
+
+    if let Some(ref proof_queue) = state.proof_queue {
+        match proof_queue.get_job(&job_id).await {
+            Ok(job) => {
+                Json(serde_json::json!({
+                    "job_id": job.job_id,
+                    "status": format!("{:?}", job.status),
+                    "proof": job.proof,
+                    "error": job.error,
+                    "created_at": job.created_at,
+                    "completed_at": job.completed_at,
+                })).into_response()
+            }
+            Err(e) => {
+                (
+                    StatusCode::NOT_FOUND,
+                    Json(serde_json::json!({
+                        "error": format!("Job not found: {}", e)
+                    }))
+                ).into_response()
+            }
+        }
+    } else {
+        (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({
+                "error": "ZK proofs not enabled"
+            }))
+        ).into_response()
+    }
+}
+
+/// Serve the Receipt Explorer UI
+async fn explorer_handler() -> Html<&'static str> {
+    Html(include_str!("../static/index.html"))
+}
+
+/// List recent receipts
+/// Note: This is a simplified implementation that returns demo data.
+/// A production version would store receipts in a persistent store.
+async fn list_receipts_handler(
+    State(_router): State<Arc<WebhookRouter>>,
+) -> Json<serde_json::Value> {
+    // In a production implementation, this would query a receipt store
+    // For now, return an empty array to indicate receipts should come from actual executions
+    Json(serde_json::json!([]))
+}
+
+/// Get a specific receipt by ID
+async fn get_receipt_handler(
+    Path(id): Path<String>,
+    State(_router): State<Arc<WebhookRouter>>,
+) -> Response {
+    // In a production implementation, this would query a receipt store
+    (
+        StatusCode::NOT_FOUND,
+        Json(serde_json::json!({
+            "error": format!("Receipt {} not found. Receipts are currently ephemeral.", id)
+        }))
+    ).into_response()
+}
+
+/// Verify receipt structure
+#[derive(Deserialize)]
+struct VerifyRequest {
+    receipt: ExecutionReceipt,
+}
+
+async fn verify_receipt_handler(
+    State(_router): State<Arc<WebhookRouter>>,
+    Json(request): Json<VerifyRequest>,
+) -> Json<serde_json::Value> {
+    // Basic structure validation
+    let has_signature = !request.receipt.signature.is_empty();
+    let has_zk_proof = request.receipt.zk_proof.is_some();
+
+    // In a production implementation, this would actually verify the signature
+    // using the ReceiptVerifier and optionally verify the ZK proof
+
+    Json(serde_json::json!({
+        "valid": has_signature,
+        "signature_valid": has_signature,
+        "zk_proof_valid": has_zk_proof,
+        "receipt_id": request.receipt.receipt_id(),
+        "note": "Full cryptographic verification requires ReceiptVerifier with node's public key"
+    }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tenzik_runtime::{MockProofBackend, Capability};
+
+    fn create_test_signing_key() -> SigningKey {
+        use rand::RngCore;
+        let mut rng = rand::rngs::OsRng;
+        let mut secret_bytes = [0u8; 32];
+        rng.fill_bytes(&mut secret_bytes);
+        SigningKey::from_bytes(&secret_bytes)
+    }
+
+    #[tokio::test]
+    async fn test_webhook_router_creation() {
+        let config = WebhookConfig::default();
+        let signing_key = create_test_signing_key();
+        let backend = Arc::new(MockProofBackend::new());
+
+        let router = WebhookRouter::new(config, signing_key, Some(backend)).unwrap();
+        assert_eq!(router.list_routes().await.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_add_remove_route() {
+        let config = WebhookConfig::default();
+        let signing_key = create_test_signing_key();
+        let router = WebhookRouter::new(config, signing_key, None).unwrap();
+
+        let route_config = RouteConfig {
+            path: "/test".to_string(),
+            capsule_bytes: vec![],
+            resource_limits: ResourceLimits {
+                memory_limit_mb: 64,
+                execution_time_ms: 5000,
+                fuel_limit: 10000000,
+                capabilities: vec![Capability::Hash],
+            },
+            enable_zk_proofs: false,
+            description: "Test route".to_string(),
+        };
+
+        router.add_route(route_config).await.unwrap();
+        assert_eq!(router.list_routes().await.len(), 1);
 
     /// Get current router statistics
     pub async fn stats(&self) -> RouterStats {

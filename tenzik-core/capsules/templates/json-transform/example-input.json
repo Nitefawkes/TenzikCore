@@ -1,0 +1,10 @@
+{
+  "user": {
+    "name": "Alice",
+    "age": 30,
+    "email": "alice@example.com"
+  },
+  "action": "login",
+  "timestamp": 1234567890,
+  "ip_address": "192.168.1.1"
+}

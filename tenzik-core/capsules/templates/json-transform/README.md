@@ -56,6 +56,23 @@ A versatile Tenzik capsule for transforming JSON data with verifiable execution 
   }
 }
 ```
+A Tenzik capsule template demonstrating JSON transformation and field extraction using path notation.
+
+## Features
+
+- **Input**: JSON with nested objects and fields
+- **Processing**: Extract fields using path notation (e.g., `user.name`)
+- **Transform**: Map input structure to output structure
+- **Output**: Transformed JSON with enriched data
+- **Size**: Target <3KB when compiled with AssemblyScript + wasm-opt -Oz
+- **Deterministic**: Same input always produces same output
+
+## Use Cases
+
+- **Webhook Transformation**: Convert webhook payloads between formats
+- **Data Mapping**: Extract and reshape API responses
+- **Event Processing**: Transform event streams
+- **Field Extraction**: Pull specific fields from complex JSON
 
 ## Build
 
